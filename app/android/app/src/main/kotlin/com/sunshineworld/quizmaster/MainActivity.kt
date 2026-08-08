@@ -1,4 +1,4 @@
-package com.sunshineworld.sunshine_app
+package com.sunshineworld.quizmaster
 
 import android.Manifest
 import android.app.ActivityManager
@@ -54,7 +54,7 @@ class MainActivity : FlutterActivity() {
     private val usbExportChannelName = "storyvault/usb_export"
     private val permissionRequestCode = 4107
     private val usbTreeRequestCode = 4308
-    private val usbExportPermissionAction = "com.sunshineworld.sunshine_app.USB_EXPORT_PERMISSION"
+    private val usbExportPermissionAction = "com.sunshineworld.quizmaster.USB_EXPORT_PERMISSION"
     private val usbMassStorageRootUri = "usbms://storyvault-root"
     private val vadMode = Mode.VERY_AGGRESSIVE
     private val vadSpeechDurationMs = 50
@@ -335,7 +335,7 @@ class MainActivity : FlutterActivity() {
         if (directStarted) {
             return
         }
-        result.error("no_usb_device", "Connect a StoryVault storage device and try again.", null)
+        result.error("no_usb_device", "Connect a Quizmaster storage device and try again.", null)
     }
 
     private fun tryStartUsbMassStorageSelection(result: MethodChannel.Result): Boolean {

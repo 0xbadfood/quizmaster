@@ -113,7 +113,7 @@ final class UsbExportBridge: NSObject, UIDocumentPickerDelegate {
           isDirectory.boolValue else {
       pending(FlutterError(
         code: "unsupported_target",
-        message: "Please choose the root folder of a StoryVault USB device.",
+        message: "Please choose the root folder of a Quizmaster USB device.",
         details: nil
       ))
       return
@@ -287,7 +287,7 @@ final class UsbExportBridge: NSObject, UIDocumentPickerDelegate {
     guard rootUri.hasPrefix(rootUriPrefix), let session = rootSessions[rootUri] else {
       throw NativeError(
         code: "unsupported_target",
-        message: "Please choose the root folder of a StoryVault USB device."
+        message: "Please choose the root folder of a Quizmaster USB device."
       )
     }
     return session

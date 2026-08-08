@@ -1,6 +1,6 @@
 // Local iOS Google Sign-In config.
 // Copy these values from the iOS GoogleService-Info.plist for bundle id:
-// com.sunshineworld.sunshineApp
+// com.sunshineworld.quizmaster
 //
 // CLIENT_ID -> STORYVAULT_GOOGLE_IOS_CLIENT_ID
 // REVERSED_CLIENT_ID -> STORYVAULT_GOOGLE_REVERSED_CLIENT_ID
