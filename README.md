@@ -206,15 +206,24 @@ OpenAI Images or ImageStudio connection:
 python3 scripts/generate_quiz_background.py \
   --category "Indian Independence" \
   --display-title "INDIAN INDEPENDENCE QUIZ" \
+  --planner-provider llm-default \
   --provider openai-images \
   --quality medium \
-  --visual-brief "Use the Red Fort, India Gate, a charkha, and tricolor accents."
+  --category-guidance "Celebrate the freedom movement respectfully."
 ```
+
+By default the configured Qwen connection plans the scene and writes the complete
+renderer prompt. It receives the fixed output size, layout safe areas, embedded-text
+contract, house style, and exclusions; it decides the category-specific subjects,
+composition, palette, and lighting. Use `--plan-only` to review its JSON plan without
+spending an image call, and `--refresh-plan` to request a new concept.
 
 Use `--provider imagestudio-local --model ernie-turbo` for the local path. The
 provider value is a Studio connection ID, so other enabled OpenAI Images or
 ImageStudio connections work without code changes. `--model`, `--seed`,
-`--subtitle`, `--prompt`, and `--output` support controlled variants. The default
+`--subtitle`, `--prompt`, and `--output` support controlled variants. Supplying
+`--prompt` bypasses Qwen; `--visual-brief` uses the deterministic fallback template.
+The default
 output is under `background_previews/` and includes a generation manifest beside
 the PNG. The PNG can be passed directly to the category pipeline's `--background`
 argument after review.
