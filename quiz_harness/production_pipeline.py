@@ -84,6 +84,7 @@ class CategoryPipelineConfig:
     force_background: bool = False
     refresh_background_plan: bool = False
     force_new_bundle: bool = False
+    activate_bundle: bool = True
     allow_active_jobs: bool = False
 
 
@@ -747,6 +748,7 @@ class CategoryProductionPipeline:
             category=category,
             force_new_version=self.config.force_new_bundle,
             progress=lambda message, *_: self._log("publish", message),
+            activate=self.config.activate_bundle,
         )
         self.checkpoint.update("publish", {"status": "complete", "result": result})
         return result

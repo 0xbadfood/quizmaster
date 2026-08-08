@@ -1,0 +1,29 @@
+[Unit]
+Description=Quizmaster Creation Pipeline API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nitin
+Group=nitin
+WorkingDirectory=/home/nitin/quiz_generator
+RuntimeDirectory=quizmaster
+RuntimeDirectoryMode=0750
+Environment=PYTHONUNBUFFERED=1
+Environment=QUIZ_DATABASE_PATH=/home/nitin/quiz_generator/data/quiz_harness.db
+Environment=QUIZ_STUDIO_SOURCE_ROOT=/home/nitin/quiz_generator/visual_quiz_qwen
+Environment=QUIZ_CATEGORY_BUNDLE_ROOT=/home/nitin/quiz_generator/dist/category_bundles
+Environment=QUIZ_SECRET_KEY_FILE=/home/nitin/quiz_generator/data/.provider_secret_key
+Environment=QUIZ_PIPELINE_LOCK=/run/quizmaster/pipeline.lock
+Environment=QUIZMASTER_PUBLIC_BASE_URL=https://quizmaster.photovault.live
+Environment=QUIZMASTER_REQUIRE_AUTH=1
+EnvironmentFile=/home/nitin/quiz_generator/data/quizmaster-api.env
+ExecStart=/home/nitin/quiz_generator/.venv/bin/python -m uvicorn quiz_harness.pipeline_api:app --host 10.8.0.2 --port 9071 --proxy-headers --forwarded-allow-ips=10.8.0.1
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

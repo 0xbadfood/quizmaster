@@ -215,6 +215,35 @@ def test_build_reuses_unchanged_content_and_can_activate_old_version(tmp_path: P
     assert activated["bundle_version"] == current["bundle_version"] == 1
 
 
+def test_build_can_prepare_version_without_deploying_it(tmp_path: Path) -> None:
+    category_root, global_root = _source_tree(tmp_path / "source")
+    output_root = tmp_path / "dist"
+    kwargs = {
+        "category": "Animals",
+        "category_root": category_root,
+        "global_root": global_root,
+        "output_root": output_root,
+        "display_title": "ANIMAL QUIZ",
+        "display_tag": "Animals",
+        "activate": False,
+    }
+
+    prepared = build_category_bundle(**kwargs)
+    reused = build_category_bundle(**kwargs)
+
+    assert prepared["bundle_version"] == reused["bundle_version"] == 1
+    assert not (output_root / "animals/current.json").exists()
+    assert (
+        output_root / "animals/versions/000001/record.json"
+    ).is_file()
+
+    activate_category_bundle_version(
+        output_root=output_root, category="Animals", version=1
+    )
+    current = json.loads((output_root / "animals/current.json").read_text())
+    assert current["bundle_version"] == 1
+
+
 def test_build_includes_only_category_specific_audio(tmp_path: Path) -> None:
     category_root, global_root = _source_tree(tmp_path / "source")
     praise_clips = []

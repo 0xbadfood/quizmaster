@@ -1130,19 +1130,28 @@ class QuizDatabase:
             )
         return self.provider_connection(provider_id)
 
-    def mark_interrupted_jobs(self, updated_at: str) -> int:
+    def mark_interrupted_jobs(
+        self, updated_at: str, *, kinds: set[str] | None = None
+    ) -> int:
         self.migrate()
+        kind_clause = ""
+        parameters: list[Any] = [updated_at, updated_at]
+        if kinds:
+            placeholders = ", ".join("?" for _ in kinds)
+            kind_clause = f" AND kind IN ({placeholders})"
+            parameters.extend(sorted(kinds))
         with self.connect() as connection:
             cursor = connection.execute(
-                """
+                f"""
                 UPDATE studio_jobs
                 SET status = 'interrupted',
                     message = 'Interrupted by service restart',
                     error = 'The service restarted before this job completed.',
                     completed_at = ?, updated_at = ?
                 WHERE status IN ('queued', 'running')
+                {kind_clause}
                 """,
-                (updated_at, updated_at),
+                parameters,
             )
         return cursor.rowcount
 

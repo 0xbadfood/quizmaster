@@ -317,6 +317,7 @@ class StudioPublishStore:
         category: dict[str, Any],
         force_new_version: bool,
         progress: Callable[..., None],
+        activate: bool = True,
     ) -> dict[str, Any]:
         with self._lock:
             readiness = self.inventory(category)
@@ -327,7 +328,10 @@ class StudioPublishStore:
                     if item["status"] != "ready"
                 )
                 raise StudioPublishError(f"category is not ready to publish: {blocked}")
-            previous_version = int((readiness.get("current") or {}).get("bundle_version", 0))
+            existing_versions = {
+                int(item["bundle_version"])
+                for item in readiness.get("versions", [])
+            }
             progress("Validating release inputs", 0.12)
             record = build_category_bundle(
                 category=category["name"],
@@ -337,12 +341,16 @@ class StudioPublishStore:
                 display_title=category["display_title"],
                 display_tag=category["display_tag"],
                 force_new_version=force_new_version,
+                activate=activate,
             )
             progress("Verifying release archive", 0.9)
             archive = self.category_output(category["slug"]) / record["archive_file"]
             if not archive.is_file() or _sha256(archive) != record["archive_sha256"]:
                 raise StudioPublishError("published archive verification failed")
             version = int(record["bundle_version"])
+            current_version = version if activate else int(
+                (readiness.get("current") or {}).get("bundle_version", 0)
+            )
             return {
                 "status": "complete",
                 "category_slug": category["slug"],
@@ -350,7 +358,11 @@ class StudioPublishStore:
                 "content_hash": record["content_hash"],
                 "archive_bytes": record["archive_bytes"],
                 "archive_sha256": record["archive_sha256"],
-                "reused_existing_version": version == previous_version,
+                "reused_existing_version": version in existing_versions,
+                "deployment_status": (
+                    "deployed" if version == current_version else "deployable"
+                ),
+                "is_current": version == current_version,
             }
 
     def activate(self, *, category: dict[str, Any], version: int) -> dict[str, Any]:

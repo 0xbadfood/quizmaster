@@ -108,6 +108,24 @@ def _current_record(category_output: Path) -> dict[str, Any] | None:
     return _read_json(record_path)
 
 
+def _record_with_content_hash(
+    category_output: Path, content_hash: str
+) -> dict[str, Any] | None:
+    versions_root = category_output / "versions"
+    if not versions_root.exists():
+        return None
+    for path in sorted(
+        (item for item in versions_root.iterdir() if item.is_dir()), reverse=True
+    ):
+        record_path = path / "record.json"
+        if not record_path.is_file():
+            continue
+        record = _read_json(record_path)
+        if record.get("content_hash") == content_hash:
+            return record
+    return None
+
+
 def _next_version(category_output: Path) -> int:
     versions_root = category_output / "versions"
     versions = [
@@ -358,6 +376,7 @@ def build_category_bundle(
     display_title: str,
     display_tag: str | None = None,
     force_new_version: bool = False,
+    activate: bool = True,
 ) -> dict[str, Any]:
     category_slug = _slug(category)
     category_output = output_root / category_slug
@@ -381,12 +400,18 @@ def build_category_bundle(
         payload_files = _file_inventory(staging)
         content_hash = _content_hash(payload_files)
         current = _current_record(category_output)
-        if (
-            current is not None
-            and current.get("content_hash") == content_hash
-            and not force_new_version
-        ):
-            return current
+        matching = _record_with_content_hash(category_output, content_hash)
+        if matching is not None and not force_new_version:
+            if activate and (
+                current is None
+                or current.get("bundle_version") != matching.get("bundle_version")
+            ):
+                activate_category_bundle_version(
+                    output_root=output_root,
+                    category=category,
+                    version=int(matching["bundle_version"]),
+                )
+            return matching
 
         version = _next_version(category_output)
         version_name = f"{version:06d}"
@@ -424,17 +449,18 @@ def build_category_bundle(
             "record_file": record_file,
         }
         _write_json(version_root / "record.json", record)
-        _write_json(
-            category_output / "current.json",
-            {
-                "schema_version": "category_bundle_pointer_v1",
-                "category_id": category_slug,
-                "bundle_version": version,
-                "content_hash": content_hash,
-                "record_file": record_file,
-                "updated_at_utc": _now(),
-            },
-        )
+        if activate:
+            _write_json(
+                category_output / "current.json",
+                {
+                    "schema_version": "category_bundle_pointer_v1",
+                    "category_id": category_slug,
+                    "bundle_version": version,
+                    "content_hash": content_hash,
+                    "record_file": record_file,
+                    "updated_at_utc": _now(),
+                },
+            )
         return record
 
 

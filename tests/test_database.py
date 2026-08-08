@@ -177,3 +177,29 @@ def test_catalog_reports_current_plan_revision(tmp_path: Path) -> None:
     assert lion["asset_key"] == "animals/lion"
     assert lion["plan_count"] == 1
     assert lion["current_revision"] == 1
+
+
+def test_interrupted_job_recovery_can_be_scoped_by_kind(tmp_path: Path) -> None:
+    database = QuizDatabase(tmp_path / "quiz.db")
+    database.migrate()
+    for job_id, kind in (("pipeline", "category_pipeline_api"), ("visual", "visuals")):
+        database.create_studio_job(
+            {
+                "id": job_id,
+                "kind": kind,
+                "status": "queued",
+                "message": "Queued",
+                "progress": 0,
+                "context": {},
+                "created_at": "2026-08-09T00:00:00+00:00",
+                "updated_at": "2026-08-09T00:00:00+00:00",
+            }
+        )
+
+    count = database.mark_interrupted_jobs(
+        "2026-08-09T00:01:00+00:00", kinds={"category_pipeline_api"}
+    )
+
+    assert count == 1
+    assert database.studio_job("pipeline")["status"] == "interrupted"
+    assert database.studio_job("visual")["status"] == "queued"

@@ -197,6 +197,37 @@ completed work. Provider IDs and models can be overridden; use
 pipeline refuses to compete with active Studio jobs. `--force-background` rerenders
 the current concept; `--refresh-background-plan` asks Qwen for a new concept first.
 
+### Quizmaster creation API
+
+The persistent creation API exposes the automated pipeline to the Flutter creation
+app at `https://quizmaster.photovault.live` (port `9071` on this host). Its OpenAPI
+document is available at `/docs`; the stable application surface is under
+`/api/v1`.
+
+All application endpoints except health and OpenAPI require
+`Authorization: Bearer <token>` (or `X-Quizmaster-Token`). The service reads the
+token from the permission-restricted `data/quizmaster-api.env`; the Flutter app
+should keep it in platform secure storage after initial server configuration.
+
+- `/api/v1/providers` configures encrypted provider connections and discovered models.
+- `/api/v1/pipeline/options` returns provider-role constraints and pipeline defaults.
+- `POST /api/v1/pipelines` starts one exclusive category build.
+- `/api/v1/pipelines/current` and per-job event endpoints report live progress.
+- `/api/v1/bundles` lists incomplete, deployable, and deployed category versions.
+- `POST /api/v1/bundles/{slug}/deploy` explicitly activates a prepared version.
+
+Generation holds `/run/quizmaster/pipeline.lock`, so a second generation or deploy
+request receives HTTP `409`; health, provider, job, and bundle queries remain
+available. API-started pipelines create and verify an immutable bundle version but do
+not update `current.json`. Deployment is the separate activation step. Install the
+service with:
+
+```bash
+sudo cp deploy/quizmaster-api.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now quizmaster-api.service
+```
+
 ### Generated category backgrounds
 
 Create a production-shaped `941x1672` portrait background with either an enabled
