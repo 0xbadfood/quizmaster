@@ -160,7 +160,7 @@ def _parser() -> argparse.ArgumentParser:
 
     production = subparsers.add_parser(
         "category-pipeline",
-        help="build and publish a category from metadata and a background image",
+        help="build and publish a complete quiz category",
     )
     production.add_argument(
         "--metadata",
@@ -171,8 +171,7 @@ def _parser() -> argparse.ArgumentParser:
     production.add_argument(
         "--background",
         type=Path,
-        required=True,
-        help="user-supplied category background image",
+        help="optional background image; generated with Qwen when omitted",
     )
     production.add_argument("--database", type=Path, default=DEFAULT_DATABASE)
     production.add_argument(
@@ -194,6 +193,12 @@ def _parser() -> argparse.ArgumentParser:
     production.add_argument("--question-model", default="gpt-5.6-luna")
     production.add_argument("--qwen-provider", default="llm-default")
     production.add_argument("--qwen-model")
+    production.add_argument("--background-provider", default="openai-images")
+    production.add_argument("--background-model")
+    production.add_argument(
+        "--background-guidance",
+        help="optional category-specific direction appended to the editorial brief",
+    )
     production.add_argument("--tile-provider", default="openai-images")
     production.add_argument("--tile-model")
     production.add_argument("--answer-provider", default="imagestudio-local")
@@ -210,6 +215,16 @@ def _parser() -> argparse.ArgumentParser:
         "--force-media",
         action="store_true",
         help="regenerate existing narration and generated images",
+    )
+    production.add_argument(
+        "--force-background",
+        action="store_true",
+        help="rerender the generated background while retaining its prompt plan",
+    )
+    production.add_argument(
+        "--refresh-background-plan",
+        action="store_true",
+        help="ask Qwen for a new background concept before rendering",
     )
     production.add_argument(
         "--force-new-bundle",
@@ -556,6 +571,9 @@ def _run_category_pipeline(args: argparse.Namespace) -> int:
                 question_model=args.question_model,
                 qwen_provider_id=args.qwen_provider,
                 qwen_model=args.qwen_model,
+                background_provider_id=args.background_provider,
+                background_model=args.background_model,
+                background_guidance=args.background_guidance,
                 tile_provider_id=args.tile_provider,
                 tile_model=args.tile_model,
                 answer_provider_id=args.answer_provider,
@@ -565,6 +583,8 @@ def _run_category_pipeline(args: argparse.Namespace) -> int:
                 seed=args.seed,
                 image_quality=args.image_quality,
                 force_media=args.force_media,
+                force_background=args.force_background,
+                refresh_background_plan=args.refresh_background_plan,
                 force_new_bundle=args.force_new_bundle,
                 allow_active_jobs=args.allow_active_jobs,
             ),

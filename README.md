@@ -158,16 +158,14 @@ delivery API observes the updated pointer without a restart.
 
 ### Automated category pipeline
 
-The production CLI can take a new category from metadata and a user-supplied
-background through question generation, set selection, media generation, and an
-immutable published bundle. Start from
+The production CLI takes a new category from metadata through question generation,
+set selection, media generation, and an immutable published bundle. Start from
 [`examples/category-metadata.example.json`](examples/category-metadata.example.json),
 then run:
 
 ```bash
 python3 scripts/run_category_pipeline.py \
-  --metadata examples/category-metadata.example.json \
-  --background /path/to/category-background.png
+  --metadata examples/category-metadata.example.json
 ```
 
 The default workflow requests up to 150 beginner and 150 intermediate questions
@@ -179,10 +177,11 @@ selects as many ten-question sets as the usable banks permit, up to ten per
 difficulty. Partial set selections remain committed.
 
 After selection, two workers run concurrently. One generates and Whisper-audits
-VibeVoice narration; the other asks Qwen for selector, tile, and answer prompts and
-renders all missing images. OpenAI Images is the default selector/tile provider and
-ImageStudio is the default answer provider. The supplied background is normalized
-and registered as the category background.
+VibeVoice narration; the other asks Qwen to plan the category background plus the
+selector, tile, and answer prompts, then renders all missing images. OpenAI Images is
+the default background and selector/tile provider, while ImageStudio is the default
+answer provider. Pass `--background /path/to/image.png` to use an approved upload
+instead. Existing registered or matching generated backgrounds are reused.
 
 Narration receives three Whisper repair attempts. A clip that still fails is
 rerendered until the reported duration is greater than zero and no more than 12
@@ -195,7 +194,8 @@ Progress and batch attempts are written atomically to
 from existing banks, sets, prompts, images, and narration instead of discarding
 completed work. Provider IDs and models can be overridden; use
 `python3 scripts/run_category_pipeline.py --help` for the full list. By default the
-pipeline refuses to compete with active Studio jobs.
+pipeline refuses to compete with active Studio jobs. `--force-background` rerenders
+the current concept; `--refresh-background-plan` asks Qwen for a new concept first.
 
 ### Generated category backgrounds
 
@@ -225,8 +225,9 @@ ImageStudio connections work without code changes. `--model`, `--seed`,
 `--prompt` bypasses Qwen; `--visual-brief` uses the deterministic fallback template.
 The default
 output is under `background_previews/` and includes a generation manifest beside
-the PNG. The PNG can be passed directly to the category pipeline's `--background`
-argument after review.
+the PNG. The category pipeline performs this workflow automatically when
+`--background` is omitted; the standalone command remains useful for review and an
+approved PNG can still be supplied as an explicit override.
 
 ## Question-set pilot
 
@@ -338,9 +339,9 @@ connections can generate the category selector, quiz tiles, and answer-choice
 objects; the operator chooses the provider for each job. **Select all tiles** and
 **Select all answer images** create one asset-class batch for the shared Generate
 action. Each prompt remains editable, generated assets can be approved, rejected, or
-regenerated, and all generation work runs as durable jobs. The background is
-approved as a user upload and is deliberately excluded from prompt planning and
-generation.
+regenerated, and all generation work runs as durable jobs. In the interactive Studio
+workflow the background remains an approved upload. The automated category pipeline
+plans and generates it before using the same visual inventory and publish gates.
 
 Before planning, the inventory displays deterministic fallback prompts. Tile
 fallbacks are derived from category/set metadata, while answer fallbacks are strict

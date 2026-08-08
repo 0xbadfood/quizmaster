@@ -373,6 +373,15 @@ def normalize_background(data: bytes, output: Path) -> dict[str, Any]:
     }
 
 
+def _valid_background(path: Path) -> bool:
+    try:
+        with Image.open(path) as image:
+            image.load()
+            return image.format == "PNG" and image.size == BACKGROUND_SIZE
+    except (OSError, UnidentifiedImageError):
+        return False
+
+
 def _model(provider: dict[str, Any], override: str | None) -> str:
     value = override or provider.get("default_model") or next(
         iter(provider.get("discovered_models") or []), None
@@ -487,6 +496,7 @@ def generate_quiz_background(
     planning_metadata: dict[str, Any] | None = None,
     retries: int = 2,
     timeout_seconds: float = 900.0,
+    force: bool = False,
 ) -> dict[str, Any]:
     database = QuizDatabase(database_path)
     database.migrate()
@@ -510,6 +520,31 @@ def generate_quiz_background(
     )
     if len(prompt) < 100:
         raise BackgroundGenerationError("background prompt must contain at least 100 characters")
+
+    output = output.expanduser().resolve()
+    manifest = output.with_suffix(".generation.json")
+    fingerprint = hashlib.sha256(
+        json.dumps(
+            {
+                "provider_id": provider["id"],
+                "provider_type": provider["provider_type"],
+                "model": model,
+                "quality": quality,
+                "seed": seed if provider["provider_type"] == "imagestudio" else None,
+                "prompt": prompt,
+                "size": BACKGROUND_SIZE,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    if not force and manifest.is_file() and _valid_background(output):
+        try:
+            cached = json.loads(manifest.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            cached = None
+        if isinstance(cached, dict) and cached.get("fingerprint") == fingerprint:
+            return {**cached, "manifest": str(manifest), "reused": True}
 
     if provider["provider_type"] == "openai_images":
         secrets = SecretStore(
@@ -547,11 +582,12 @@ def generate_quiz_background(
         "quality": quality if provider["provider_type"] == "openai_images" else None,
         "prompt": prompt,
         "planning": planning_metadata,
+        "fingerprint": fingerprint,
+        "reused": False,
         "generation": generation,
         "image": image,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
     }
-    manifest = output.expanduser().resolve().with_suffix(".generation.json")
     temporary = manifest.with_suffix(manifest.suffix + ".tmp")
     temporary.write_text(
         json.dumps(result, indent=2, ensure_ascii=True) + "\n", encoding="utf-8"

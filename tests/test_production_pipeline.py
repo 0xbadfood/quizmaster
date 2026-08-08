@@ -138,3 +138,130 @@ def test_bank_scheduler_uses_six_total_balanced_batches(monkeypatch: pytest.Monk
     assert result["beginner"]["total"] == 150
     assert result["intermediate"]["total"] == 150
     assert pipeline.checkpoint.updates[-1]["batches_used"] == 6
+
+
+def test_existing_background_is_reused_without_planning(tmp_path: Path) -> None:
+    runtime = tmp_path / "space" / "assets/category/runtime_background.png"
+    runtime.parent.mkdir(parents=True)
+    from PIL import Image
+
+    Image.new("RGB", (941, 1672), "navy").save(runtime)
+
+    class Visuals:
+        @staticmethod
+        def category_root(slug: str) -> Path:
+            return tmp_path / slug
+
+    class Checkpoint:
+        updates: list[tuple[str, dict[str, object]]] = []
+
+        def update(self, name: str, value: dict[str, object]) -> None:
+            self.updates.append((name, value))
+
+    pipeline = object.__new__(CategoryProductionPipeline)
+    pipeline.config = SimpleNamespace(
+        background=None,
+        force_background=False,
+        refresh_background_plan=False,
+    )
+    pipeline.visuals = Visuals()
+    pipeline.checkpoint = Checkpoint()
+    pipeline._log = lambda *_: None
+
+    result = pipeline._ensure_background({"slug": "space"})
+
+    assert result["reused"] is True
+    assert pipeline.checkpoint.updates[-1][1]["source"] == "existing"
+
+
+def test_missing_background_is_planned_rendered_and_registered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: dict[str, dict[str, object]] = {}
+
+    class Plan:
+        prompt = "A complete portrait renderer prompt long enough for the image model."
+
+        @staticmethod
+        def model_dump(*, mode: str) -> dict[str, object]:
+            assert mode == "json"
+            return {"prompt": Plan.prompt}
+
+    class Visuals:
+        uploaded: bytes | None = None
+
+        @staticmethod
+        def category_root(slug: str) -> Path:
+            return tmp_path / slug
+
+        def upload_background(
+            self, category: dict[str, object], data: bytes, content_type: str
+        ) -> dict[str, str]:
+            assert category["slug"] == "space"
+            assert content_type == "image/png"
+            self.uploaded = data
+            return {"asset_id": "runtime_background", "status": "approved"}
+
+    class Checkpoint:
+        def update(self, _name: str, _value: dict[str, object]) -> None:
+            return None
+
+    def plan(**kwargs: object) -> dict[str, object]:
+        calls["plan"] = kwargs
+        return {
+            "plan": Plan(),
+            "provider_id": "llm-default",
+            "model": "qwen",
+            "file": str(kwargs["output"]),
+            "reused": False,
+        }
+
+    def generate(**kwargs: object) -> dict[str, object]:
+        calls["generate"] = kwargs
+        output = Path(str(kwargs["output"]))
+        output.parent.mkdir(parents=True, exist_ok=True)
+        from PIL import Image
+
+        Image.new("RGB", (941, 1672), "navy").save(output)
+        return {"image": {"file": str(output)}, "reused": False}
+
+    monkeypatch.setattr(
+        "quiz_harness.production_pipeline.plan_quiz_background_prompt", plan
+    )
+    monkeypatch.setattr(
+        "quiz_harness.production_pipeline.generate_quiz_background", generate
+    )
+    pipeline = object.__new__(CategoryProductionPipeline)
+    pipeline.config = SimpleNamespace(
+        background=None,
+        force_background=False,
+        refresh_background_plan=False,
+        background_guidance="Include an observatory.",
+        background_provider_id="openai-images",
+        background_model=None,
+        qwen_provider_id="llm-default",
+        qwen_model=None,
+        database_path=tmp_path / "quiz.db",
+        secret_key_file=tmp_path / "secret.key",
+        image_quality="medium",
+        seed=42,
+    )
+    pipeline.visuals = Visuals()
+    pipeline.checkpoint = Checkpoint()
+    pipeline._log = lambda *_: None
+
+    result = pipeline._ensure_background(
+        {
+            "slug": "space",
+            "name": "Space",
+            "display_title": "SPACE QUIZ",
+            "editorial_brief": "Use concrete astronomy subjects.",
+        }
+    )
+
+    assert result["source"] == "generated"
+    assert pipeline.visuals.uploaded
+    assert calls["plan"]["provider_id"] == "llm-default"
+    assert "Include an observatory." in str(calls["plan"]["category_guidance"])
+    assert calls["generate"]["provider_id"] == "openai-images"
+    assert calls["generate"]["prompt_override"] == Plan.prompt

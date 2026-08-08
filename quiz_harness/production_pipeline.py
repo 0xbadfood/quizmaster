@@ -14,6 +14,10 @@ from typing import Any, Callable
 from PIL import Image, UnidentifiedImageError
 from pydantic import Field
 
+from .background_images import (
+    generate_quiz_background,
+    plan_quiz_background_prompt,
+)
 from .client import VLLMClient
 from .database import QuizDatabase
 from .models import StrictModel
@@ -49,7 +53,7 @@ class CategoryPipelineMetadata(StrictModel):
 @dataclass(frozen=True)
 class CategoryPipelineConfig:
     metadata: CategoryPipelineMetadata
-    background: Path
+    background: Path | None
     database_path: Path
     source_root: Path
     bundle_root: Path
@@ -58,6 +62,9 @@ class CategoryPipelineConfig:
     question_model: str = "gpt-5.6-luna"
     qwen_provider_id: str = "llm-default"
     qwen_model: str | None = None
+    background_provider_id: str = "openai-images"
+    background_model: str | None = None
+    background_guidance: str | None = None
     tile_provider_id: str = "openai-images"
     tile_model: str | None = None
     answer_provider_id: str = "imagestudio-local"
@@ -74,6 +81,8 @@ class CategoryPipelineConfig:
     audio_duration_seconds: float = 12.0
     audio_duration_retries: int | None = None
     force_media: bool = False
+    force_background: bool = False
+    refresh_background_plan: bool = False
     force_new_bundle: bool = False
     allow_active_jobs: bool = False
 
@@ -165,19 +174,20 @@ class CategoryProductionPipeline:
         self.progress(f"[{phase}] {message}")
 
     def _validate_inputs(self) -> None:
-        background = self.config.background.expanduser().resolve()
-        if not background.is_file():
-            raise CategoryPipelineError(
-                f"background image does not exist: {background}"
-            )
-        content_type = mimetypes.guess_type(background.name)[0] or ""
-        if not content_type.startswith("image/"):
-            raise CategoryPipelineError("background file must use an image extension")
-        try:
-            with Image.open(background) as source:
-                source.verify()
-        except (OSError, UnidentifiedImageError) as exc:
-            raise CategoryPipelineError(f"background image is invalid: {exc}") from exc
+        if self.config.background is not None:
+            background = self.config.background.expanduser().resolve()
+            if not background.is_file():
+                raise CategoryPipelineError(
+                    f"background image does not exist: {background}"
+                )
+            content_type = mimetypes.guess_type(background.name)[0] or ""
+            if not content_type.startswith("image/"):
+                raise CategoryPipelineError("background file must use an image extension")
+            try:
+                with Image.open(background) as source:
+                    source.verify()
+            except (OSError, UnidentifiedImageError) as exc:
+                raise CategoryPipelineError(f"background image is invalid: {exc}") from exc
         if not 1 <= self.config.question_batch_size <= 50:
             raise CategoryPipelineError("question batch size must be between 1 and 50")
         if not 1 <= self.config.max_question_batches <= 6:
@@ -448,6 +458,8 @@ class CategoryProductionPipeline:
         return results
 
     def _upload_background(self, category: dict[str, Any]) -> dict[str, Any]:
+        if self.config.background is None:
+            raise CategoryPipelineError("no uploaded background was configured")
         path = self.config.background.expanduser().resolve()
         if not path.is_file():
             raise CategoryPipelineError(f"background image does not exist: {path}")
@@ -455,9 +467,117 @@ class CategoryProductionPipeline:
         result = self.visuals.upload_background(category, path.read_bytes(), content_type)
         self.checkpoint.update(
             "background",
-            {"status": "complete", "source": str(path), "result": result},
+            {
+                "status": "complete",
+                "source": "user_upload",
+                "source_file": str(path),
+                "result": result,
+            },
         )
         self._log("background", f"registered {path.name}")
+        return result
+
+    def _ensure_background(self, category: dict[str, Any]) -> dict[str, Any]:
+        if self.config.background is not None:
+            return self._upload_background(category)
+
+        root = self.visuals.category_root(category["slug"])
+        runtime_background = root / "assets/category/runtime_background.png"
+        if (
+            runtime_background.is_file()
+            and not self.config.force_background
+            and not self.config.refresh_background_plan
+        ):
+            try:
+                with Image.open(runtime_background) as source:
+                    source.verify()
+            except (OSError, UnidentifiedImageError):
+                self._log("background", "existing background is invalid; regenerating")
+            else:
+                result = {
+                    "asset_id": "runtime_background",
+                    "status": "approved",
+                    "file": str(runtime_background),
+                    "reused": True,
+                }
+                self.checkpoint.update(
+                    "background",
+                    {"status": "complete", "source": "existing", "result": result},
+                )
+                self._log("background", "reusing registered runtime background")
+                return result
+
+        work = root / "background-generation"
+        plan_path = work / "background-prompt-plan.json"
+        guidance = "\n\n".join(
+            value.strip()
+            for value in (
+                category.get("editorial_brief"),
+                self.config.background_guidance,
+            )
+            if value and value.strip()
+        )
+        self.checkpoint.update(
+            "background",
+            {
+                "status": "planning",
+                "planner_provider_id": self.config.qwen_provider_id,
+                "image_provider_id": self.config.background_provider_id,
+            },
+        )
+        self._log("background", "planning category background with Qwen")
+        planned = plan_quiz_background_prompt(
+            category=category["name"],
+            display_title=category["display_title"],
+            subtitle="ADVENTURE",
+            provider_id=self.config.qwen_provider_id,
+            database_path=self.config.database_path,
+            secret_key_file=self.config.secret_key_file,
+            output=plan_path,
+            model_override=self.config.qwen_model,
+            category_guidance=guidance or None,
+            seed=self.config.seed,
+            force=self.config.refresh_background_plan,
+        )
+        plan_document = planned["plan"]
+        planning = {
+            **planned,
+            "plan": plan_document.model_dump(mode="json"),
+        }
+        self.checkpoint.update(
+            "background", {"status": "generating", "planning": planning}
+        )
+        self._log(
+            "background",
+            f"rendering category background with {self.config.background_provider_id}",
+        )
+        generated = generate_quiz_background(
+            category=category["name"],
+            display_title=category["display_title"],
+            provider_id=self.config.background_provider_id,
+            database_path=self.config.database_path,
+            secret_key_file=self.config.secret_key_file,
+            output=work / "runtime_background.png",
+            model_override=self.config.background_model,
+            quality=self.config.image_quality,
+            seed=self.config.seed,
+            subtitle="ADVENTURE",
+            prompt_override=plan_document.prompt,
+            planning_metadata=planning,
+            force=self.config.force_background,
+        )
+        uploaded = self.visuals.upload_background(
+            category, Path(generated["image"]["file"]).read_bytes(), "image/png"
+        )
+        result = {
+            "source": "generated",
+            "planning": planning,
+            "generation": generated,
+            "registration": uploaded,
+        }
+        self.checkpoint.update(
+            "background", {"status": "complete", "source": "generated", "result": result}
+        )
         return result
 
     def _audio_branch(self, category: dict[str, Any]) -> dict[str, Any]:
@@ -515,6 +635,7 @@ class CategoryProductionPipeline:
         return result
 
     def _visual_branch(self, category: dict[str, Any]) -> dict[str, Any]:
+        background = self._ensure_background(category)
         qwen = self._provider(
             self.config.qwen_provider_id, {"openai_compatible_llm"}
         )
@@ -582,7 +703,12 @@ class CategoryProductionPipeline:
         final_inventory = self.visuals.inventory(category)
         if final_inventory["summary"]["generated"] != final_inventory["summary"]["total"]:
             raise CategoryPipelineError("visual branch ended with missing assets")
-        result = {"plan": plan, "runs": runs, "summary": final_inventory["summary"]}
+        result = {
+            "background": background,
+            "plan": plan,
+            "runs": runs,
+            "summary": final_inventory["summary"],
+        }
         self.checkpoint.update("visuals", {"status": "complete", "result": result})
         return result
 
@@ -631,7 +757,6 @@ class CategoryProductionPipeline:
         category = self._ensure_category()
         banks = self._generate_banks(category)
         sets = self._select_sets(category)
-        self._upload_background(category)
         media = self._run_media(category)
         published = self._publish(category)
         result = {

@@ -57,6 +57,7 @@ def main() -> int:
     parser.add_argument("--plan-output", type=Path)
     parser.add_argument("--plan-only", action="store_true")
     parser.add_argument("--refresh-plan", action="store_true")
+    parser.add_argument("--force", action="store_true")
     parser.add_argument("--database", type=Path, default=DATABASE_PATH)
     parser.add_argument(
         "--secret-key-file", type=Path, default=Path("data/.provider_secret_key")
@@ -139,6 +140,7 @@ def main() -> int:
             output=output,
             retries=args.retries,
             timeout_seconds=args.timeout,
+            force=args.force,
         )
     except (OSError, RuntimeError, ValueError) as exc:
         print(f"Background generation failed: {exc}", file=sys.stderr)

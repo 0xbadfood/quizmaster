@@ -11,6 +11,7 @@ from quiz_harness.background_images import (
     _parse_prompt_plan,
     build_background_planning_prompt,
     build_background_prompt,
+    generate_quiz_background,
     normalize_background,
 )
 
@@ -95,3 +96,66 @@ def test_normalize_background_writes_runtime_dimensions(tmp_path: Path) -> None:
     assert result["width"] == 941
     assert result["height"] == 1672
     assert len(result["sha256"]) == 64
+
+
+def test_background_generation_reuses_matching_render(
+    tmp_path: Path, monkeypatch
+) -> None:
+    provider = {
+        "id": "openai-images",
+        "provider_type": "openai_images",
+        "enabled": True,
+        "default_model": "gpt-image-1",
+        "discovered_models": [],
+        "secret_ciphertext": None,
+    }
+
+    class Database:
+        def __init__(self, _path: Path) -> None:
+            pass
+
+        @staticmethod
+        def migrate() -> None:
+            return None
+
+        @staticmethod
+        def provider_connection(_provider_id: str) -> dict[str, object]:
+            return provider
+
+    class Secrets:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        @staticmethod
+        def decrypt(_value: object) -> str:
+            return "test-key"
+
+    calls = 0
+
+    def render(**_kwargs: object) -> tuple[bytes, dict[str, object]]:
+        nonlocal calls
+        calls += 1
+        payload = io.BytesIO()
+        Image.new("RGB", (1024, 1536), "navy").save(payload, format="PNG")
+        return payload.getvalue(), {"request_id": "test"}
+
+    monkeypatch.setattr("quiz_harness.background_images.QuizDatabase", Database)
+    monkeypatch.setattr("quiz_harness.background_images.SecretStore", Secrets)
+    monkeypatch.setattr("quiz_harness.background_images._openai_image", render)
+    output = tmp_path / "runtime_background.png"
+    kwargs = {
+        "category": "Space",
+        "display_title": "SPACE QUIZ",
+        "provider_id": "openai-images",
+        "database_path": tmp_path / "quiz.db",
+        "secret_key_file": tmp_path / "secret.key",
+        "output": output,
+        "prompt_override": "P" * 500 + " portrait SPACE QUIZ ADVENTURE",
+    }
+
+    first = generate_quiz_background(**kwargs)
+    second = generate_quiz_background(**kwargs)
+
+    assert first["reused"] is False
+    assert second["reused"] is True
+    assert calls == 1
