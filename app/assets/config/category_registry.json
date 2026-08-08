@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "rhymes": {
+    "english": [
+      { "id": "abcd", "label": "ABCD", "server_category_id": 98, "asset_key": "abc" },
+      { "id": "animals", "label": "Animals", "server_category_id": 2, "asset_key": "animals" },
+      { "id": "nature", "label": "Nature", "server_category_id": 37, "asset_key": "nature" },
+      { "id": "action", "label": "Action", "server_category_id": 38, "asset_key": "action" },
+      { "id": "learning", "label": "Learning", "server_category_id": 5, "asset_key": "learning" },
+      { "id": "numbers", "label": "Numbers", "server_category_id": 99, "asset_key": "numbers" },
+      { "id": "food", "label": "Food", "server_category_id": 96, "asset_key": "food" },
+      { "id": "routine", "label": "Routine", "server_category_id": 39, "asset_key": "everyday" },
+      { "id": "family", "label": "Family", "server_category_id": 8, "asset_key": "family" },
+      { "id": "vehicles", "label": "Vehicles", "server_category_id": 40, "asset_key": "vehicles" },
+      { "id": "moral", "label": "Moral", "server_category_id": 41, "asset_key": "morals" },
+      { "id": "fun", "label": "Fun", "server_category_id": 42, "asset_key": "funny" },
+      { "id": "lullaby", "label": "Lullaby", "server_category_id": 43, "asset_key": "bedtime" }
+    ]
+  },
+  "stories": {
+    "english": [
+      { "id": "bedtime", "label": "Bedtime", "server_category_id": 48, "asset_key": "bedtime" },
+      { "id": "animals", "label": "Animals", "server_category_id": 49, "asset_key": "animals" },
+      { "id": "adventure", "label": "Adventure", "server_category_id": 94, "asset_key": "adventure" },
+      { "id": "alif_laila", "label": "Alif Laila", "server_category_id": 55, "asset_key": "adventure" },
+      { "id": "tenali_raman", "label": "Tenali Raman", "server_category_id": 79, "asset_key": "funny" },
+      { "id": "singhasan_battisi", "label": "Singhasan Battisi", "server_category_id": 81, "asset_key": "mythology" },
+      { "id": "vikram_betal", "label": "Vikram & Betal", "server_category_id": 85, "asset_key": "mythology" },
+      { "id": "akbar_birbal", "label": "Akbar-Birbal", "server_category_id": 86, "asset_key": "heroes" },
+      { "id": "gonu_jha", "label": "Gonu Jha", "server_category_id": 87, "asset_key": "funny" },
+      { "id": "gopal_bhar", "label": "Gopal Bhar", "server_category_id": 95, "asset_key": "funny" },
+      { "id": "panchatantra", "label": "Panchatantra", "server_category_id": 88, "asset_key": "morals" },
+      { "id": "jataka", "label": "Jataka", "server_category_id": 89, "asset_key": "morals" },
+      { "id": "hitopadesha", "label": "Hitopadesha", "server_category_id": 90, "asset_key": "morals" },
+      { "id": "indian_folk", "label": "Indian Folk", "server_category_id": 91, "asset_key": "adventure" },
+      { "id": "grimm_tales", "label": "GrimmTales", "server_category_id": 101, "asset_key": "fairytales" },
+      { "id": "european_folk", "label": "EuropeanFolk", "server_category_id": 102, "asset_key": "adventure" },
+      { "id": "asian_folk", "label": "AsianFolk", "server_category_id": 103, "asset_key": "adventure" },
+      { "id": "african_folk", "label": "AfricanFolk", "server_category_id": 104, "asset_key": "adventure" },
+      { "id": "other_folk", "label": "OtherFolk", "server_category_id": 105, "asset_key": "type_story" }
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "Space and Astronomy",
+  "slug": "space-and-astronomy",
+  "display_title": "SPACE QUIZ",
+  "display_tag": "Space",
+  "description": "A visual quiz about space, planets, stars, and exploration.",
+  "editorial_brief": "Use deterministic, age-appropriate facts about astronomy and space exploration. Keep answer choices concrete and visually distinguishable. Exclude astrology, fictional spacecraft, and disputed claims.",
+  "age_min": 5,
+  "age_max": 10
+}

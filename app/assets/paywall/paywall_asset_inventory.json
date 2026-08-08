@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "screen": "subscription_paywall",
+  "principles": [
+    "Generated images contain no prices, subscription plan names, legal copy, CTA text, or restore text.",
+    "All commercial, localized, and legal text must be rendered by Flutter from store/server metadata.",
+    "Assets are app-owned for V1 and can later move behind a server-delivered paywall asset manifest."
+  ],
+  "assets": [
+    {
+      "name": "paywall_background_fairy_garden",
+      "file": "paywall_background_fairy_garden.png",
+      "type": "portrait_background",
+      "size": "1024x1536",
+      "usage": "Full-screen subscription backdrop behind native Flutter cards.",
+      "prompt": "A magical children’s storybook garden background for a kids subscription screen, portrait phone composition, bright blue sky, soft rainbow arc, friendly castle in the far distance, lush flowers, sunny path, warm inviting fantasy mood, polished 3D storybook illustration, rich colors, large clean central negative space for UI cards, no characters, no text, no letters, no logos, no watermark."
+    },
+    {
+      "name": "paywall_mascot_bunny",
+      "file": "paywall_mascot_bunny.png",
+      "type": "mascot_sticker",
+      "size": "1024x1024",
+      "usage": "Friendly mascot accent near the subscription CTA or benefit area.",
+      "prompt": "A cute friendly bunny mascot for a children’s storytelling app, sitting and waving happily, plush toy feel, warm golden fur, expressive eyes, small storybook charm, polished 3D sticker style, centered, soft pastel garden bokeh background, generous padding, no text, no letters, no logos, no watermark."
+    },
+    {
+      "name": "paywall_benefit_unlimited",
+      "file": "paywall_benefit_unlimited.png",
+      "type": "benefit_icon",
+      "size": "1024x1024",
+      "usage": "Icon for unlimited stories and rhymes.",
+      "prompt": "A cheerful kids app benefit icon showing an open magical storybook with a glowing star rising from the pages, rounded 3D icon style, bright friendly colors, centered on a soft cream circular tile, no text, no letters, no logos, no watermark."
+    },
+    {
+      "name": "paywall_benefit_ad_free",
+      "file": "paywall_benefit_ad_free.png",
+      "type": "benefit_icon",
+      "size": "1024x1024",
+      "usage": "Icon for ad-free experience.",
+      "prompt": "A cheerful kids app benefit icon showing a protective blue shield with a simple clean sparkle symbol, conveying safe ad-free experience without using prohibition signs or text, rounded 3D icon style, centered on a soft cream circular tile, no text, no letters, no logos, no watermark."
+    },
+    {
+      "name": "paywall_benefit_offline",
+      "file": "paywall_benefit_offline.png",
+      "type": "benefit_icon",
+      "size": "1024x1024",
+      "usage": "Icon for offline downloads.",
+      "prompt": "A cheerful kids app benefit icon showing a fluffy blue cloud with a friendly download arrow and small sparkles, rounded 3D icon style, bright clean colors, centered on a soft cream circular tile, no text, no letters, no logos, no watermark."
+    },
+    {
+      "name": "paywall_benefit_new_content",
+      "file": "paywall_benefit_new_content.png",
+      "type": "benefit_icon",
+      "size": "1024x1024",
+      "usage": "Icon for new content regularly.",
+      "prompt": "A cheerful kids app benefit icon showing a smiling golden star with tiny celebration sparkles, conveying fresh new content, rounded 3D icon style, centered on a full square soft cream background that fills every corner edge to edge, no black background, no transparency, no text, no letters, no logos, no watermark."
+    },
+    {
+      "name": "paywall_badge_popular_plate",
+      "file": "paywall_badge_popular_plate.png",
+      "type": "decorative_badge_plate",
+      "size": "1024x1024",
+      "usage": "Decorative plate behind native Flutter 'Most Popular' text.",
+      "prompt": "A glossy purple rounded ribbon badge plate with a small golden star ornament, kid-friendly premium subscription decoration, centered, clean 3D UI asset style, no text, no letters, no logos, no watermark."
+    },
+    {
+      "name": "paywall_badge_best_value_plate",
+      "file": "paywall_badge_best_value_plate.png",
+      "type": "decorative_badge_plate",
+      "size": "1024x1024",
+      "usage": "Decorative plate behind native Flutter 'Best Value' text.",
+      "prompt": "A glossy purple-blue rounded ribbon badge plate with a small diamond ornament, kid-friendly premium subscription decoration, centered, clean 3D UI asset style, no text, no letters, no logos, no watermark."
+    },
+    {
+      "name": "paywall_v2_hero_info",
+      "file": "paywall_v2_hero_info.png",
+      "type": "hero_info_tile",
+      "size": "1080x660",
+      "usage": "Single merged V2 paywall hero tile. It visually explains that subscription unlocks stories, rhymes, quizzes, offline access, and an ad-free full library.",
+      "prompt": "A polished children’s storybook subscription hero tile in a magical sunny garden, with a glowing open storybook, story pages, music notes, quiz stars/checkmarks, offline cloud, safe ad-free shield, and bunny mascot. Include only the exact short text 'Stories, Rhymes & Quizzes' and 'Full library access'. No prices, no legal text, no logos, no watermark."
+    },
+    {
+      "name": "paywall_v2_monthly_plan",
+      "file": "paywall_v2_monthly_plan.png",
+      "type": "plan_tile_background",
+      "size": "1080x330",
+      "usage": "V2 monthly plan artwork with a blank right-side plaque reserved for Flutter-rendered localized price and plan text.",
+      "prompt": "A polished children’s monthly subscription plan art tile in the StoryVault fairy-garden style, with a storybook calendar, sun and moon charms, story page stack, music note, quiz check star, and bunny details. Reserve a blank cream-and-gold right-side plaque for native price overlay. No text, letters, numbers, currency symbols, logos, or watermark."
+    },
+    {
+      "name": "paywall_v2_yearly_plan",
+      "file": "paywall_v2_yearly_plan.png",
+      "type": "plan_tile_background",
+      "size": "1080x330",
+      "usage": "V2 yearly plan artwork with a blank right-side plaque reserved for Flutter-rendered localized price and plan text.",
+      "prompt": "A polished children’s yearly subscription plan art tile in the StoryVault fairy-garden style, with a treasure chest made of storybooks, story pages, music notes, quiz star/checkmark, offline cloud, golden crown/star reward, and bunny mascot with key. Reserve a blank cream-and-gold right-side plaque for native price overlay. No text, letters, numbers, currency symbols, logos, or watermark."
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quiz-harness"
+version = "0.1.0"
+description = "CLI prototype for generating validated, mobile-first kids quiz plans"
+requires-python = ">=3.11"
+dependencies = [
+  "cryptography>=45,<47",
+  "fastapi>=0.115,<1",
+  "httpx>=0.27,<1",
+  "openai>=2.24,<3",
+  "pillow>=10,<13",
+  "pydantic>=2.10,<3",
+  "uvicorn>=0.30,<1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+
+[project.scripts]
+quiz-harness = "quiz_harness.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["quiz_harness*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

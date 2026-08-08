@@ -1,0 +1,5 @@
+{
+  "schema_version": "flutter_quiz_audio_v2",
+  "correct_sfx": "audio/quiz_correct_sfx.mp3",
+  "incorrect_sfx": "audio/quiz_incorrect_sfx.mp3"
+}

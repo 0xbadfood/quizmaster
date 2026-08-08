@@ -1,0 +1,20 @@
+[Unit]
+Description=Quiz Category Delivery API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nitin
+Group=nitin
+WorkingDirectory=/home/nitin/quiz_generator
+Environment=PYTHONUNBUFFERED=1
+Environment=QUIZ_DELIVERY_ROOT=/home/nitin/quiz_generator/dist/category_bundles
+ExecStart=/home/nitin/.pyenv/versions/3.11.9/bin/python3 -m uvicorn quiz_harness.delivery_api:app --host 0.0.0.0 --port 9070 --proxy-headers --forwarded-allow-ips=10.8.0.1
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

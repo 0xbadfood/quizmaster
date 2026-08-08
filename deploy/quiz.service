@@ -1,0 +1,17 @@
+[Unit]
+Description=Quiz Studio API and WebUI
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nitin
+Group=nitin
+WorkingDirectory=/home/nitin/quiz_generator
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/nitin/quiz_generator/.venv/bin/python -m uvicorn quiz_harness.webapi:app --host 10.8.0.2 --port 9061 --proxy-headers --forwarded-allow-ips=10.8.0.1
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

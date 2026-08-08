@@ -1,0 +1,179 @@
+from pathlib import Path
+
+from quiz_harness.database import QuizDatabase
+from quiz_harness.models import PlanDocument
+
+
+def lion_document() -> PlanDocument:
+    path = Path("plans/animals-lion-single.json")
+    return PlanDocument.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+def test_migrations_are_idempotent(tmp_path: Path) -> None:
+    database = QuizDatabase(tmp_path / "quiz.db")
+    assert database.migrate() == [1, 2, 3, 4, 5]
+    assert database.migrate() == []
+
+
+def test_category_metadata_is_persisted_and_slug_is_immutable(tmp_path: Path) -> None:
+    database = QuizDatabase(tmp_path / "quiz.db")
+    created = database.create_category(
+        name="Ancient Civilizations",
+        slug=None,
+        display_title="ANCIENT WORLD QUIZ",
+        display_tag="Ancient",
+        description="Early societies, monuments, writing, and trade.",
+        editorial_brief=(
+            "Age-appropriate world history focused on early civilizations and "
+            "their lasting achievements."
+        ),
+        age_min=7,
+        age_max=10,
+    )
+
+    assert created["slug"] == "ancient-civilizations"
+    assert created["display_title"] == "ANCIENT WORLD QUIZ"
+    assert created["display_tag"] == "Ancient"
+    assert created["production_status"] == "draft"
+
+    updated = database.update_category_metadata(
+        created["slug"],
+        name="Ancient Civilizations",
+        display_title="ANCIENT CIVILIZATIONS QUIZ",
+        display_tag="Civilization",
+        description="Early societies, monuments, writing, and trade.",
+        editorial_brief=(
+            "Age-appropriate world history focused on early civilizations, "
+            "material culture, and their lasting achievements."
+        ),
+        age_min=7,
+        age_max=11,
+    )
+
+    assert updated["slug"] == created["slug"]
+    assert updated["display_title"] == "ANCIENT CIVILIZATIONS QUIZ"
+    assert updated["display_tag"] == "Civilization"
+    assert updated["age_max"] == 11
+
+    attempted_rename = database.update_category_metadata(
+        created["slug"],
+        name="Renamed Category",
+        display_title="ANCIENT CIVILIZATIONS QUIZ",
+        display_tag="Civilization",
+        description="Early societies, monuments, writing, and trade.",
+        editorial_brief=(
+            "Age-appropriate world history focused on early civilizations, "
+            "material culture, and their lasting achievements."
+        ),
+        age_min=7,
+        age_max=11,
+    )
+    assert attempted_rename["name"] == "Ancient Civilizations"
+
+
+def test_question_reviews_and_revision_history_are_persistent(tmp_path: Path) -> None:
+    database = QuizDatabase(tmp_path / "quiz.db")
+    review = database.upsert_question_review(
+        category_slug="animals",
+        difficulty="beginner",
+        question_id="animals_beginner_001",
+        status="approved",
+        notes="Clear deterministic clue",
+    )
+    assert review["status"] == "approved"
+    assert review["reviewed_at"] is not None
+    assert database.question_reviews("animals")["animals_beginner_001"]["notes"]
+
+    database.record_question_revision(
+        category_slug="animals",
+        difficulty="beginner",
+        question_id="animals_beginner_001",
+        action="reviewed",
+        before={"status": "unreviewed"},
+        after={"status": "approved"},
+    )
+    history = database.question_revisions(
+        "animals", "beginner", "animals_beginner_001"
+    )
+    assert history[0]["action"] == "reviewed"
+    assert history[0]["after"] == {"status": "approved"}
+
+
+def test_quiz_set_reviews_and_revision_history_are_persistent(tmp_path: Path) -> None:
+    database = QuizDatabase(tmp_path / "quiz.db")
+    review = database.upsert_quiz_set_review(
+        category_slug="animals",
+        difficulty="beginner",
+        set_id="animals_beginner_001",
+        status="needs_edit",
+        notes="Replace one repetitive clue",
+    )
+    assert review["status"] == "needs_edit"
+    assert database.quiz_set_reviews("animals")["animals_beginner_001"]["notes"]
+
+    database.record_quiz_set_revision(
+        category_slug="animals",
+        difficulty="beginner",
+        set_id="animals_beginner_001",
+        action="reviewed",
+        before={"status": "unreviewed"},
+        after={"status": "needs_edit"},
+    )
+    history = database.quiz_set_revisions(
+        "animals", "beginner", "animals_beginner_001"
+    )
+    assert history[0]["after"] == {"status": "needs_edit"}
+
+
+def test_seed_catalog_is_idempotent(tmp_path: Path) -> None:
+    database = QuizDatabase(tmp_path / "quiz.db")
+    assert database.seed_catalog() == (6, 30)
+    assert database.seed_catalog() == (6, 30)
+    catalog = database.catalog()
+    assert [category["slug"] for category in catalog] == [
+        "animals",
+        "birds",
+        "food",
+        "vehicles",
+        "space",
+        "world-history",
+    ]
+    assert all(len(category["objects"]) == 5 for category in catalog)
+
+
+def test_store_plan_creates_immutable_revision_and_history(tmp_path: Path) -> None:
+    database = QuizDatabase(tmp_path / "quiz.db")
+    database.seed_catalog()
+    document = lion_document()
+
+    first = database.store_plan(document, source="import")
+    duplicate = database.store_plan(document, source="import")
+
+    assert first.created is True
+    assert first.revision == 1
+    assert duplicate.created is False
+    assert duplicate.plan_id == first.plan_id
+    assert database.plan_document(first.plan_id) == document
+    history = database.plan_history()
+    assert history[0]["subject"] == "lion"
+    assert history[0]["question_ideas"][0]["novelty_key"] == "auditory_association"
+
+    revised_data = document.model_dump(mode="json")
+    revised_data["request"]["seed"] += 1
+    revised = database.store_plan(
+        PlanDocument.model_validate(revised_data), source="manual"
+    )
+    assert revised.created is True
+    assert revised.revision == 2
+    assert database.plan_document(first.plan_id) == document
+
+
+def test_catalog_reports_current_plan_revision(tmp_path: Path) -> None:
+    database = QuizDatabase(tmp_path / "quiz.db")
+    database.seed_catalog()
+    database.store_plan(lion_document(), source="import")
+    animals = database.catalog()[0]
+    lion = next(item for item in animals["objects"] if item["slug"] == "lion")
+    assert lion["asset_key"] == "animals/lion"
+    assert lion["plan_count"] == 1
+    assert lion["current_revision"] == 1

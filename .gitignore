@@ -1,0 +1,31 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+*.tmp
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/assets/**
+
+# Local production state and generated quiz media
+/data/*.db*
+/data/.provider_secret_key
+/dist/
+/question_sets/
+/visual_quiz/
+/visual_quiz_qwen/
+/plans/
+/quiz_harness.egg-info/
+
+# Local inputs and generated reference media
+/*.wav
+/*.png
+/flora.json
+
+# Previous standalone Flutter checkout; the maintained app lives in /app.
+/Storyvault_app/
+
+# Frontend dependencies and build output
+/webui/node_modules/
+/webui/dist/

@@ -1,0 +1,66 @@
+name: sunshine_app
+description: "Sunshine World - A magical kids' rhyme and storytelling app"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  provider: ^6.1.2
+  shared_preferences: ^2.3.2
+  flutter_secure_storage: ^10.3.1
+  audioplayers: ^6.1.0
+  google_fonts: ^6.2.1
+  wakelock_plus: ^1.4.0
+  http: ^1.2.2
+  path: ^1.9.1
+  path_provider: ^2.1.4
+  sqflite: ^2.4.2
+  archive: ^3.6.1
+  crypto: ^3.0.6
+  package_info_plus: ^10.1.0
+  sherpa_onnx: ^1.13.3
+  google_sign_in: ^7.2.0
+  sign_in_with_apple: ^8.1.0
+  video_player: ^2.9.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/images/app_icon.png
+  min_sdk_android: 21
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/config/
+    - assets/images/
+    - assets/images/dock/
+    - assets/images/category_icons/
+    - assets/paywall/
+    - assets/personas/
+    - assets/story_wizards/
+    - assets/story_wizards/space_adventure_captain/
+    - assets/story_wizards/space_adventure_captain/choices/
+    - assets/story_wizards/space_adventure_captain/effects/
+    - assets/story_wizards/space_adventure_captain/generating/
+    - assets/audio/
+    - assets/videos/
+    - assets/generated/
+    - assets/generated/animals/
+    - assets/generated/moral/
+    # sunshine-generated-animals-start
+    # sunshine-generated-animals-end
+    # sunshine-generated-moral-start
+    # sunshine-generated-moral-end

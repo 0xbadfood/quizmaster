@@ -1,0 +1,7 @@
+#include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"
+#include "Generated.xcconfig"
+
+STORYVAULT_GOOGLE_SERVER_CLIENT_ID = 137843631604-h8mdeat6cj1ts1p5le6opa8fmcs7f7hp.apps.googleusercontent.com
+STORYVAULT_GOOGLE_IOS_CLIENT_ID =
+STORYVAULT_GOOGLE_REVERSED_CLIENT_ID =
+#include? "GoogleSignIn.xcconfig"
