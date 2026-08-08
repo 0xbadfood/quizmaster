@@ -261,6 +261,7 @@ class _ServerStrip extends StatelessWidget {
                 ],
               ),
             ),
+            const StatusPill(label: AppController.buildLabel),
             IconButton(
               onPressed: onEdit,
               tooltip: 'Server access',

@@ -76,6 +76,7 @@ class AppController extends ChangeNotifier {
           ((baseUrl, token) => QuizmasterApi(baseUrl: baseUrl, token: token));
 
   static const defaultBaseUrl = 'https://quizmaster.photovault.live';
+  static const buildLabel = 'Build 2';
   static const compiledBaseUrl = String.fromEnvironment(
     'QUIZMASTER_API_URL',
     defaultValue: defaultBaseUrl,
@@ -158,7 +159,7 @@ class AppController extends ChangeNotifier {
     _api?.close();
     _api = _apiFactory(baseUrl, token);
     try {
-      final health = await _api!.health();
+      final health = await _healthWithDnsRetry();
       if (health['status'] != 'ok') {
         throw const ApiException('Quizmaster API is not ready.');
       }
@@ -177,6 +178,22 @@ class AppController extends ChangeNotifier {
       connecting = false;
       notifyListeners();
     }
+  }
+
+  Future<Map<String, dynamic>> _healthWithDnsRetry() async {
+    Object? lastError;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await _api!.health();
+      } catch (error) {
+        lastError = error;
+        if (!_isDnsError(error) || attempt == 2) {
+          rethrow;
+        }
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
+    }
+    throw lastError!;
   }
 
   Future<void> refreshProviders() async {
@@ -482,9 +499,21 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  static String _message(Object error) => error is ApiException
-      ? error.message
-      : error.toString().replaceFirst('Exception: ', '');
+  static bool _isDnsError(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('failed host lookup') ||
+        message.contains('no address associated with hostname');
+  }
+
+  static String _message(Object error) {
+    if (_isDnsError(error)) {
+      return 'DNS lookup failed. Confirm the API URL opens on this phone, then reconnect '
+          'Wi-Fi, mobile data, or the VPN and try again.';
+    }
+    return error is ApiException
+        ? error.message
+        : error.toString().replaceFirst('Exception: ', '');
+  }
 
   static List<Map<String, dynamic>> _mapList(dynamic value) =>
       (value as List? ?? const [])
