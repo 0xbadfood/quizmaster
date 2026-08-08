@@ -197,6 +197,28 @@ completed work. Provider IDs and models can be overridden; use
 `python3 scripts/run_category_pipeline.py --help` for the full list. By default the
 pipeline refuses to compete with active Studio jobs.
 
+### Generated category backgrounds
+
+Create a production-shaped `941x1672` portrait background with either an enabled
+OpenAI Images or ImageStudio connection:
+
+```bash
+python3 scripts/generate_quiz_background.py \
+  --category "Indian Independence" \
+  --display-title "INDIAN INDEPENDENCE QUIZ" \
+  --provider openai-images \
+  --quality medium \
+  --visual-brief "Use the Red Fort, India Gate, a charkha, and tricolor accents."
+```
+
+Use `--provider imagestudio-local --model ernie-turbo` for the local path. The
+provider value is a Studio connection ID, so other enabled OpenAI Images or
+ImageStudio connections work without code changes. `--model`, `--seed`,
+`--subtitle`, `--prompt`, and `--output` support controlled variants. The default
+output is under `background_previews/` and includes a generation manifest beside
+the PNG. The PNG can be passed directly to the category pipeline's `--background`
+argument after review.
+
 ## Question-set pilot
 
 Generate one independently validated Animals set at each difficulty:

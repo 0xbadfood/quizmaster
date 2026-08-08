@@ -16,6 +16,7 @@ data/assets/**
 /visual_quiz/
 /visual_quiz_qwen/
 /plans/
+/background_previews/
 /quiz_harness.egg-info/
 
 # Local inputs and generated reference media
