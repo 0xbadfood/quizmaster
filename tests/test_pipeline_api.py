@@ -135,3 +135,42 @@ def test_api_pipeline_prepares_bundle_without_activation(
     assert captured["config"].activate_bundle is False
     assert service.lock.status()["busy"] is False
     service.jobs.shutdown()
+
+
+def test_failed_pipeline_can_restart_with_its_original_request(
+    tmp_path: Path, monkeypatch
+) -> None:
+    attempts = 0
+
+    def run(config, *, progress):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("temporary generation failure")
+        return {"status": "complete", "category_slug": config.metadata.slug}
+
+    monkeypatch.setattr("quiz_harness.pipeline_api.run_category_pipeline", run)
+    app = _app(tmp_path)
+    service = app.state.service
+    first = service.start_pipeline(
+        PipelineStartRequest.model_validate(_pipeline_payload())
+    )
+    for _ in range(100):
+        failed = service.pipeline_job(first["id"])
+        if failed["status"] == "failed":
+            break
+        time.sleep(0.01)
+
+    restarted = service.retry_pipeline(first["id"])
+    assert restarted["id"] != first["id"]
+    for _ in range(100):
+        completed = service.pipeline_job(restarted["id"])
+        if completed["status"] == "complete":
+            break
+        time.sleep(0.01)
+
+    assert completed["status"] == "complete"
+    assert completed["context"]["retry_of"] == first["id"]
+    assert completed["context"]["request"] == failed["context"]["request"]
+    assert attempts == 2
+    service.jobs.shutdown()

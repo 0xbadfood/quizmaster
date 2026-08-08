@@ -57,6 +57,38 @@ class _RunsScreenState extends State<RunsScreen> {
     }
   }
 
+  Future<void> _confirmRetry(
+    BuildContext context,
+    Map<String, dynamic> job,
+  ) async {
+    final contextData = job['context'] as Map? ?? const {};
+    final category =
+        contextData['category_name']?.toString() ?? 'this category';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Restart generation?'),
+        content: Text(
+          'Quizmaster will resume $category from its saved pipeline outputs and create a new run record.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(context, true),
+            icon: const Icon(Icons.restart_alt),
+            label: const Text('Restart'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await widget.controller.retryGeneration(job['id'].toString());
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = widget.controller;
@@ -84,7 +116,12 @@ class _RunsScreenState extends State<RunsScreen> {
           ],
           const SizedBox(height: 18),
           if (job != null)
-            _CurrentRunCard(job: job, locked: controller.pipelineBusy)
+            _CurrentRunCard(
+              job: job,
+              locked: controller.pipelineBusy,
+              restarting: controller.startingPipeline,
+              onRetry: () => _confirmRetry(context, job),
+            )
           else
             EmptyState(
               icon: Icons.schedule_outlined,
@@ -186,10 +223,17 @@ class _RunsScreenState extends State<RunsScreen> {
 }
 
 class _CurrentRunCard extends StatelessWidget {
-  const _CurrentRunCard({required this.job, required this.locked});
+  const _CurrentRunCard({
+    required this.job,
+    required this.locked,
+    required this.restarting,
+    required this.onRetry,
+  });
 
   final Map<String, dynamic> job;
   final bool locked;
+  final bool restarting;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -262,6 +306,22 @@ class _CurrentRunCard extends StatelessWidget {
                   phase: phases[index],
                   last: index == phases.length - 1,
                 ),
+            ],
+            if (status == 'failed' || status == 'interrupted') ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: locked || restarting ? null : onRetry,
+                  icon: restarting
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.restart_alt),
+                  label: Text(restarting ? 'Restarting' : 'Restart generation'),
+                ),
+              ),
             ],
           ],
         ),

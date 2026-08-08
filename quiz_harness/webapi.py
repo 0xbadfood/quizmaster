@@ -1333,8 +1333,8 @@ def activate_category_release(
 )
 def download_category_release(category_slug: str, version: int) -> FileResponse:
     try:
-        database.studio_category(category_slug)
-        archive, record = studio_publish.archive(category_slug, version)
+        category = database.studio_category(category_slug)
+        archive, record = studio_publish.archive(category, version)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Category not found") from exc
     except (OSError, ValueError, StudioPublishError) as exc:

@@ -447,7 +447,9 @@ class PipelineApiService:
                     f"provider {provider_id} must be one of {sorted(types)}"
                 )
 
-    def start_pipeline(self, payload: PipelineStartRequest) -> dict[str, Any]:
+    def start_pipeline(
+        self, payload: PipelineStartRequest, *, retry_of: str | None = None
+    ) -> dict[str, Any]:
         self.validate_pipeline_providers(payload.providers)
         job_id = uuid.uuid4().hex
         category_slug = payload.metadata.slug or _slug(payload.metadata.name)
@@ -510,12 +512,44 @@ class PipelineApiService:
                     "category_slug": category_slug,
                     "category_name": payload.metadata.name,
                     "providers": providers.model_dump(mode="json"),
+                    "request": payload.model_dump(mode="json"),
+                    "retry_of": retry_of,
                 },
                 lease=lease,
             )
         except Exception:
             lease.release()
             raise
+
+    def retry_pipeline(self, job_id: str) -> dict[str, Any]:
+        job = self.pipeline_job(job_id)
+        if job["status"] not in {"failed", "interrupted"}:
+            raise ValueError("only failed or interrupted generations can be restarted")
+        context = job.get("context", {})
+        request = context.get("request") if isinstance(context, dict) else None
+        if not isinstance(request, dict):
+            slug = str(context.get("category_slug") or "")
+            category = self.database.studio_category(slug)
+            metadata = {
+                key: category.get(key)
+                for key in (
+                    "name",
+                    "slug",
+                    "display_title",
+                    "display_tag",
+                    "description",
+                    "editorial_brief",
+                    "age_min",
+                    "age_max",
+                )
+            }
+            request = {
+                "metadata": metadata,
+                "providers": context.get("providers", {}),
+                "settings": PipelineSettings().model_dump(mode="json"),
+            }
+        payload = PipelineStartRequest.model_validate(request)
+        return self.start_pipeline(payload, retry_of=job_id)
 
     def pipeline_jobs(self, limit: int = 50) -> list[dict[str, Any]]:
         return [
@@ -901,6 +935,20 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    @app.post("/api/v1/pipelines/{job_id}/retry", status_code=202)
+    def retry_pipeline(job_id: str) -> dict[str, Any]:
+        try:
+            return service.retry_pipeline(job_id)
+        except PipelineBusyError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={"message": str(exc), "holder": exc.holder},
+            ) from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Pipeline job not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @app.get("/api/v1/pipelines")
     def pipeline_jobs(limit: int = 30) -> dict[str, Any]:
         return {"jobs": service.pipeline_jobs(max(1, min(limit, 100)))}
@@ -1029,8 +1077,8 @@ def create_app(
     @app.get("/api/v1/bundles/{category_slug}/versions/{version}/download")
     def download_bundle(category_slug: str, version: int) -> FileResponse:
         try:
-            service.database.studio_category(category_slug)
-            archive, record = service.publisher.archive(category_slug, version)
+            category = service.database.studio_category(category_slug)
+            archive, record = service.publisher.archive(category, version)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Category not found") from exc
         except (OSError, ValueError, StudioPublishError) as exc:

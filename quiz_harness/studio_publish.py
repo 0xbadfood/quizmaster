@@ -9,6 +9,7 @@ from typing import Any, Callable
 from .category_bundle import (
     activate_category_bundle_version,
     build_category_bundle,
+    category_bundle_slug,
 )
 from .studio_catalog import category_metadata_status
 from .visual_bank import AnimalCatalog, VisualQuizSet
@@ -71,6 +72,10 @@ class StudioPublishStore:
     def category_output(self, category_slug: str) -> Path:
         return self.output_root / category_slug
 
+    @staticmethod
+    def release_slug(category: dict[str, Any]) -> str:
+        return category_bundle_slug(str(category["name"]))
+
     def _sets(self, category_slug: str) -> list[VisualQuizSet]:
         paths = sorted(self.category_root(category_slug).glob("sets/*/*.json"))
         try:
@@ -81,8 +86,10 @@ class StudioPublishStore:
         except (OSError, ValueError) as exc:
             raise StudioPublishError(f"quiz set validation failed: {exc}") from exc
 
-    def _versions(self, category_slug: str) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
-        output = self.category_output(category_slug)
+    def _versions(
+        self, category_slug: str, release_slug: str
+    ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+        output = self.category_output(release_slug)
         pointer = _read_json(output / "current.json")
         current_version = int(pointer.get("bundle_version", 0))
         versions_root = output / "versions"
@@ -283,7 +290,8 @@ class StudioPublishStore:
             )
         )
 
-        current, versions = self._versions(slug)
+        release_slug = self.release_slug(category)
+        current, versions = self._versions(slug, release_slug)
         released_category = (current or {}).get("category", {})
         if not isinstance(released_category, dict):
             released_category = {}
@@ -302,6 +310,7 @@ class StudioPublishStore:
             "current": current,
             "versions": versions,
             "redeploy_required": redeploy_required,
+            "release_slug": release_slug,
             "summary": {
                 "quiz_sets": len(quiz_sets),
                 "questions": len(set(question_ids)),
@@ -344,7 +353,8 @@ class StudioPublishStore:
                 activate=activate,
             )
             progress("Verifying release archive", 0.9)
-            archive = self.category_output(category["slug"]) / record["archive_file"]
+            release_slug = self.release_slug(category)
+            archive = self.category_output(release_slug) / record["archive_file"]
             if not archive.is_file() or _sha256(archive) != record["archive_sha256"]:
                 raise StudioPublishError("published archive verification failed")
             version = int(record["bundle_version"])
@@ -354,6 +364,7 @@ class StudioPublishStore:
             return {
                 "status": "complete",
                 "category_slug": category["slug"],
+                "release_slug": release_slug,
                 "bundle_version": version,
                 "content_hash": record["content_hash"],
                 "archive_bytes": record["archive_bytes"],
@@ -374,19 +385,25 @@ class StudioPublishStore:
             )
             return {
                 "category_slug": category["slug"],
+                "release_slug": self.release_slug(category),
                 "bundle_version": record["bundle_version"],
                 "content_hash": record["content_hash"],
             }
 
-    def archive(self, category_slug: str, version: int) -> tuple[Path, dict[str, Any]]:
+    def archive(
+        self, category: dict[str, Any], version: int
+    ) -> tuple[Path, dict[str, Any]]:
+        release_slug = self.release_slug(category)
         record = _read_json(
-            self.category_output(category_slug)
+            self.category_output(release_slug)
             / "versions"
             / f"{version:06d}"
             / "record.json",
             required=True,
         )
-        archive = self.category_output(category_slug) / str(record.get("archive_file") or "")
+        archive = self.category_output(release_slug) / str(
+            record.get("archive_file") or ""
+        )
         if not archive.is_file():
             raise StudioPublishError("bundle archive is missing")
         return archive, record

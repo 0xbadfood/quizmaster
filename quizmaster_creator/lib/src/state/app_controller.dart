@@ -76,7 +76,7 @@ class AppController extends ChangeNotifier {
           ((baseUrl, token) => QuizmasterApi(baseUrl: baseUrl, token: token));
 
   static const defaultBaseUrl = 'https://quizmaster.photovault.live';
-  static const buildLabel = 'Build 2';
+  static const buildLabel = 'Build 3';
   static const compiledBaseUrl = String.fromEnvironment(
     'QUIZMASTER_API_URL',
     defaultValue: defaultBaseUrl,
@@ -387,6 +387,32 @@ class AppController extends ChangeNotifier {
       currentJob = job;
       selectedScreen = 2;
       noticeMessage = 'Generation started.';
+      await refreshStatus(silent: true);
+      return true;
+    } catch (error) {
+      _setError(_message(error));
+      return false;
+    } finally {
+      startingPipeline = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> retryGeneration(String jobId) async {
+    if (_api == null || startingPipeline) return false;
+    if (pipelineBusy) {
+      _setError('Wait for the current generation to finish before restarting.');
+      return false;
+    }
+    startingPipeline = true;
+    errorMessage = null;
+    notifyListeners();
+    try {
+      final job = await _api!.retryPipeline(jobId);
+      lastJobId = job['id'].toString();
+      await settingsStore.write(_lastJobKey, lastJobId!);
+      currentJob = job;
+      noticeMessage = 'Generation restarted.';
       await refreshStatus(silent: true);
       return true;
     } catch (error) {

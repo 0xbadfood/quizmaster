@@ -314,10 +314,13 @@ def test_studio_publish_requires_audited_audio_and_tracks_releases(
 ) -> None:
     source_root = tmp_path / "source"
     category_root, _ = _source_tree(source_root)
+    internal_category_root = source_root / "animal-catalog"
+    category_root.rename(internal_category_root)
+    category_root = internal_category_root
     output_root = tmp_path / "dist"
     store = StudioPublishStore(source_root, output_root)
     category = {
-        "slug": "animals",
+        "slug": "animal-catalog",
         "name": "Animals",
         "display_title": "ANIMAL QUIZ",
         "display_tag": "Animals",
@@ -373,7 +376,14 @@ def test_studio_publish_requires_audited_audio_and_tracks_releases(
     inventory = store.inventory(category)
     assert inventory["current"]["bundle_version"] == 1
     assert inventory["versions"][0]["archive_exists"] is True
-    archive, record = store.archive("animals", 1)
+    assert inventory["release_slug"] == "animals"
+    assert inventory["versions"][0]["download_url"].startswith(
+        "/api/studio/categories/animal-catalog/"
+    )
+    assert first["release_slug"] == "animals"
+    assert (output_root / "animals/current.json").is_file()
+    assert not (output_root / "animal-catalog").exists()
+    archive, record = store.archive(category, 1)
     assert archive.is_file()
     assert record["archive_sha256"] == first["archive_sha256"]
 

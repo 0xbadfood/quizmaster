@@ -21,8 +21,12 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _slug(value: str) -> str:
+def category_bundle_slug(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", value.casefold()).strip("-") or "quiz"
+
+
+def _slug(value: str) -> str:
+    return category_bundle_slug(value)
 
 
 def _sha256(path: Path) -> str:

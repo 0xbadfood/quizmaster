@@ -53,6 +53,9 @@ class QuizmasterApi {
   Future<Map<String, dynamic>> startPipeline(Map<String, dynamic> payload) =>
       _post('/api/v1/pipelines', payload);
 
+  Future<Map<String, dynamic>> retryPipeline(String jobId) =>
+      _post('/api/v1/pipelines/$jobId/retry', const {});
+
   Future<Map<String, dynamic>> deploy(String slug, {int? version}) {
     final payload = <String, dynamic>{};
     if (version != null) {
