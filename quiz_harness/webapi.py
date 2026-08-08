@@ -299,14 +299,14 @@ class ProviderUpdateRequest(BaseModel):
 
 class QuestionChoiceRequest(BaseModel):
     object_key: str = Field(min_length=1, max_length=80)
-    label: str = Field(min_length=2, max_length=60)
+    label: str = Field(min_length=2, max_length=50)
 
 
 class QuestionContentRequest(BaseModel):
     question: str = Field(min_length=12, max_length=180)
     choices: list[QuestionChoiceRequest] = Field(min_length=4, max_length=4)
     correct_choice_id: str = Field(pattern="^choice[1-4]$")
-    explanation: str = Field(min_length=20, max_length=360)
+    explanation: str = Field(min_length=20, max_length=320)
 
 
 class QuestionReviewRequest(BaseModel):

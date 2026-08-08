@@ -236,6 +236,13 @@ class PersistentJobRunner:
         )
         progress_value = 0.0
         progress_lock = threading.Lock()
+        lease_released = False
+
+        def release_lease() -> None:
+            nonlocal lease_released
+            if lease is not None and not lease_released:
+                lease.release()
+                lease_released = True
 
         def update(message: str, progress: float | None = None) -> None:
             nonlocal progress_value
@@ -255,6 +262,7 @@ class PersistentJobRunner:
             try:
                 result = target(update)
             except Exception as exc:
+                release_lease()
                 self.database.update_studio_job(
                     job_id,
                     status="failed",
@@ -264,6 +272,7 @@ class PersistentJobRunner:
                     updated_at=_now(),
                 )
             else:
+                release_lease()
                 self.database.update_studio_job(
                     job_id,
                     status="complete",
@@ -273,14 +282,12 @@ class PersistentJobRunner:
                     updated_at=_now(),
                 )
             finally:
-                if lease is not None:
-                    lease.release()
+                release_lease()
 
         try:
             self.executor.submit(run)
         except Exception:
-            if lease is not None:
-                lease.release()
+            release_lease()
             raise
         return self.database.studio_job(job_id)
 

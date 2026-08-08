@@ -85,6 +85,12 @@ def test_bank_scheduler_uses_six_total_balanced_batches(monkeypatch: pytest.Monk
 
     class Questions:
         @staticmethod
+        def quarantine_contract_invalid(
+            category_slug: str, difficulty: str
+        ) -> dict[str, object]:
+            return {"quarantined": 0, "question_ids": []}
+
+        @staticmethod
         def import_questions(
             category: dict[str, object],
             difficulty: str,

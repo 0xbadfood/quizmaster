@@ -11,10 +11,11 @@ from typing import Annotated, Any, Iterable, Literal
 
 import httpx
 from openai import APIStatusError, OpenAI
-from pydantic import Field
+from pydantic import Field, ValidationError
 
 from .database import QuizDatabase
 from .models import StrictModel
+from .visual_bank import BankQuestion
 
 
 DIFFICULTIES = ("beginner", "intermediate")
@@ -84,6 +85,8 @@ well-established factual clue, exactly four distinct concrete answer choices, on
 defensible answer, and a concise explanation that explicitly names the answer.
 Avoid opinions, vague clues, disputed records, trick questions, and time-sensitive
 claims. Choices must be visually representable as individual images.
+Keep every choice label between 2 and 50 characters and every explanation between
+20 and 320 characters.
 
 Return one JSON object only with this shape:
 {{
@@ -211,19 +214,62 @@ class QuestionBankStore:
             issues.append("Exactly four choices are required.")
             return issues
         labels = [str(choice.get("label", "")).strip() for choice in choices]
-        if any(len(label) < 2 or len(label) > 60 for label in labels):
-            issues.append("Every choice needs a 2-60 character label.")
+        if any(len(label) < 2 or len(label) > 50 for label in labels):
+            issues.append("Every choice needs a 2-50 character label.")
         if len({normalize_text(label) for label in labels}) != 4:
             issues.append("All four choice labels must be distinct.")
         if correct_id not in {f"choice{index}" for index in range(1, 5)}:
             issues.append("Correct answer must reference choice1 through choice4.")
-        if len(explanation) < 20 or len(explanation) > 360:
-            issues.append("Explanation must be 20-360 characters.")
+        if len(explanation) < 20 or len(explanation) > 320:
+            issues.append("Explanation must be 20-320 characters.")
         if correct_id in {f"choice{index}" for index in range(1, 5)}:
             answer = labels[int(correct_id[-1]) - 1]
             if normalize_text(answer) not in normalize_text(explanation):
                 issues.append("Explanation must explicitly name the correct answer.")
         return issues
+
+    def quarantine_contract_invalid(
+        self, category_slug: str, difficulty: str
+    ) -> dict[str, Any]:
+        """Remove unallocated records that cannot satisfy the runtime bank schema."""
+        self._difficulty(difficulty)
+        path = self.bank_path(category_slug, difficulty)
+        if not path.exists():
+            return {"quarantined": 0, "question_ids": []}
+        quarantined: list[str] = []
+        with BANK_WRITE_LOCK:
+            document = self._read(path)
+            valid: list[dict[str, Any]] = []
+            rejections = list(document.get("ingestion_rejections", []))
+            for index, item in enumerate(document["questions"], start=1):
+                try:
+                    BankQuestion.model_validate(item)
+                except ValidationError as exc:
+                    question_id = str(item.get("question_id") or f"invalid_{index}")
+                    if item.get("state") == "allocated":
+                        raise QuestionBankError(
+                            f"Allocated question {question_id} violates the runtime contract."
+                        ) from exc
+                    reasons = [
+                        f"{'.'.join(str(part) for part in error['loc'])}: "
+                        f"{error['msg']}"
+                        for error in exc.errors()[:8]
+                    ]
+                    rejections.append(
+                        {
+                            "question_index": index,
+                            "source_question_id": slugify(question_id),
+                            "reasons": reasons,
+                        }
+                    )
+                    quarantined.append(question_id)
+                    continue
+                valid.append(item)
+            if quarantined:
+                document["questions"] = valid
+                document["ingestion_rejections"] = rejections
+                self._write(path, document)
+        return {"quarantined": len(quarantined), "question_ids": quarantined}
 
     def _documents(self, category_slug: str) -> dict[str, dict[str, Any]]:
         return {

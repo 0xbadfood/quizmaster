@@ -290,6 +290,15 @@ class CategoryProductionPipeline:
             if item["slug"] != category["slug"]
             and category_metadata_status(item)["ready"]
         ]
+        for difficulty in DIFFICULTIES:
+            repair = self.questions.quarantine_contract_invalid(
+                category["slug"], difficulty
+            )
+            if repair["quarantined"]:
+                self._log(
+                    f"bank:{difficulty}",
+                    f"quarantined {repair['quarantined']} runtime-invalid question(s)",
+                )
         previous = self.checkpoint.phase("question_banks").get("difficulties", {})
         results: dict[str, Any] = {}
         for difficulty in DIFFICULTIES:

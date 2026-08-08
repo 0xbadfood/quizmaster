@@ -163,6 +163,59 @@ def test_generation_prompt_uses_category_brief_and_sibling_boundaries() -> None:
         "openai_compatible_llm",
         "openai_images",
     }
+    assert "2 and 50 characters" in prompt
+
+
+def test_import_rejects_values_outside_runtime_bank_contract(tmp_path: Path) -> None:
+    bank, database = store(tmp_path)
+    valid = {
+        "question": "Which animal demonstrates another deterministic feature?",
+        "choices": [
+            {"label": f"New Animal {index}", "object_key": f"new_animal_{index}"}
+            for index in range(1, 5)
+        ],
+        "correct_choice_id": "choice1",
+        "explanation": "New Animal 1 demonstrates another deterministic feature.",
+    }
+    overlong = {
+        **valid,
+        "choices": [
+            {**valid["choices"][0], "label": "A" * 51},
+            *valid["choices"][1:],
+        ],
+    }
+
+    result = bank.import_questions(
+        database.studio_category("animals"), "beginner", [overlong]
+    )
+
+    assert result["accepted"] == 0
+    assert result["rejected"] == 1
+    assert "2-50" in result["rejections"][0]["reasons"][0]
+
+
+def test_quarantine_removes_only_unallocated_contract_invalid_records(
+    tmp_path: Path,
+) -> None:
+    bank, _ = store(tmp_path)
+    path = bank.bank_path("animals", "beginner")
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["questions"][1]["choices"][0]["label"] = "A" * 51
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    result = bank.quarantine_contract_invalid("animals", "beginner")
+    repaired = json.loads(path.read_text(encoding="utf-8"))
+
+    assert result == {
+        "quarantined": 1,
+        "question_ids": ["animals_beginner_002"],
+    }
+    assert [item["question_id"] for item in repaired["questions"]] == [
+        "animals_beginner_001"
+    ]
+    assert repaired["ingestion_rejections"][0]["source_question_id"] == (
+        "animals_beginner_002"
+    )
 
 
 def test_direct_import_accepts_category_appropriate_question_stems() -> None:
