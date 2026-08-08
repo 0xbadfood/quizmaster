@@ -104,7 +104,10 @@ def _validate_prompt_plan(
     named_style = next((name for name in banned if name in folded), None)
     if named_style:
         raise ValueError(f"background prompt names copyrighted style: {named_style}")
-    if "portrait" not in folded:
+    vertical_mobile = "vertical" in folded and any(
+        marker in folded for marker in ("9:16", "mobile screen", "tall screen")
+    )
+    if "portrait" not in folded and not vertical_mobile:
         raise ValueError("background prompt must explicitly request portrait composition")
 
 
@@ -129,7 +132,11 @@ def _parse_prompt_plan(raw: str) -> BackgroundPromptPlan:
     scene_concept = _text(nested) if not scene else _text(
         scene.get("description") or scene.get("visual_storytelling")
     )
-    prompt = _text(value.get("prompt") or value.get("final_renderer_prompt"))
+    prompt = _text(
+        value.get("prompt")
+        or value.get("final_renderer_prompt")
+        or value.get("final_prompt")
+    )
     focal_elements = _normalize_focal_elements(
         value.get("focal_elements") or scene.get("focal_elements")
     )

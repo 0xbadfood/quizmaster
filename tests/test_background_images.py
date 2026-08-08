@@ -9,6 +9,7 @@ from PIL import Image
 from quiz_harness.background_images import (
     BACKGROUND_SIZE,
     _parse_prompt_plan,
+    _validate_prompt_plan,
     build_background_planning_prompt,
     build_background_prompt,
     generate_quiz_background,
@@ -80,6 +81,44 @@ def test_qwen_response_shape_is_normalized_to_canonical_plan() -> None:
 
     assert plan.schema_version == "quiz_background_prompt_plan_v1"
     assert plan.focal_elements == ["Red Fort", "India Gate", "marigolds", "tricolor fabric"]
+
+
+def test_background_plan_accepts_vertical_mobile_prompt_alias() -> None:
+    raw = json.dumps(
+        {
+            "visual_summary": "A child-friendly Indian history scene.",
+            "scene_concept": (
+                "Historic landmarks and festive decoration frame a calm central "
+                "area in one coherent, respectful educational scene."
+            ),
+            "focal_elements": ["Red Fort", "marigolds", "tricolor fabric"],
+            "palette_and_lighting": (
+                "Warm sunrise gold with saffron, white, green, and blue accents."
+            ),
+            "final_prompt": (
+                "Create a vertical 9:16 mobile quiz background with the exact title "
+                "INDIAN INDEPENDENCE QUIZ and exact subtitle ADVENTURE. Keep the "
+                "central 30 to 72 percent calm, low contrast, and uncluttered for "
+                "Flutter controls. Frame the outer edges and lower third with the "
+                "Red Fort, marigolds, tricolor fabric, and smiling Indian children. "
+                "Use a polished family-friendly 3D animated illustration aesthetic, "
+                "warm sunrise light, crisp silhouettes, appealing depth, and generous "
+                "safe margins. Make the scene historically respectful, celebratory, "
+                "and suitable for children. Include no other text, dates, captions, "
+                "labels, logos, watermarks, interface controls, borders, modern "
+                "political imagery, malformed anatomy, or duplicate subjects."
+            ),
+        }
+    )
+
+    plan = _parse_prompt_plan(raw)
+    _validate_prompt_plan(
+        plan,
+        display_title="INDIAN INDEPENDENCE QUIZ",
+        subtitle="ADVENTURE",
+    )
+
+    assert plan.prompt.startswith("Create a vertical 9:16")
 
 
 def test_normalize_background_writes_runtime_dimensions(tmp_path: Path) -> None:
