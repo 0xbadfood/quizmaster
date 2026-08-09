@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -271,3 +272,92 @@ def test_missing_background_is_planned_rendered_and_registered(
     assert "Include an observatory." in str(calls["plan"]["category_guidance"])
     assert calls["generate"]["provider_id"] == "openai-images"
     assert calls["generate"]["prompt_override"] == Plan.prompt
+
+
+def test_visual_generation_consumes_committed_batch_before_planning_finishes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    generated = threading.Event()
+    planner_observed_generation = False
+
+    class Client:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def __enter__(self) -> "Client":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    class Visuals:
+        def plan_prompts(self, **kwargs: object) -> dict[str, object]:
+            nonlocal planner_observed_generation
+            callback = kwargs["on_batch_planned"]
+            assert callable(callback)
+            callback({"tile_beginner_01"})
+            planner_observed_generation = generated.wait(2)
+            return {"asset_count": 1}
+
+        @staticmethod
+        def inventory(_category: dict[str, object]) -> dict[str, object]:
+            count = int(generated.is_set())
+            return {
+                "assets": [
+                    {
+                        "asset_id": "tile_beginner_01",
+                        "role": "quiz_tile",
+                        "image_url": "asset" if count else None,
+                    }
+                ],
+                "summary": {"total": 1, "generated": count},
+            }
+
+    class Publisher:
+        @staticmethod
+        def category_root(slug: str) -> Path:
+            return tmp_path / slug
+
+    class Checkpoint:
+        def update(self, _name: str, _value: dict[str, object]) -> None:
+            return None
+
+    monkeypatch.setattr("quiz_harness.production_pipeline.VLLMClient", Client)
+    pipeline = object.__new__(CategoryProductionPipeline)
+    pipeline.config = SimpleNamespace(
+        qwen_provider_id="qwen",
+        qwen_model=None,
+        tile_provider_id="imagestudio",
+        tile_model="ernie",
+        answer_provider_id="imagestudio",
+        answer_model="ernie",
+        seed=42,
+        force_media=False,
+    )
+    pipeline.publisher = Publisher()
+    pipeline.visuals = Visuals()
+    pipeline.checkpoint = Checkpoint()
+    pipeline._ensure_background = lambda _category: {"status": "approved"}
+    pipeline._provider = lambda *_args: {"base_url": "http://qwen", "id": "qwen"}
+    pipeline._model = lambda *_args: "qwen-model"
+    pipeline._secret = lambda *_args: None
+    pipeline._log = lambda *_args: None
+
+    def generate(**_kwargs: object) -> dict[str, object]:
+        generated.set()
+        return {"requested": 1, "generated": 1, "reused": 0, "failed": 0}
+
+    pipeline._generate_visual_group = generate
+
+    result = pipeline._visual_branch(
+        {
+            "slug": "space",
+            "name": "Space",
+            "display_title": "SPACE QUIZ",
+            "editorial_brief": "Use concrete astronomy subjects.",
+        }
+    )
+
+    assert planner_observed_generation is True
+    assert result["summary"]["generated"] == 1
+    assert result["queue"]["jobs"]["complete"] == 1

@@ -796,6 +796,7 @@ def generate_qwen_image_prompt_plan(
     retries: int = 2,
     force: bool = False,
     progress: Callable[[str], None] | None = None,
+    on_batch_committed: Callable[[ImagePromptPlan, set[str]], None] | None = None,
 ) -> ImagePromptPlan:
     plan_path = category_root / "image-prompt-plan.json"
     plan = _load_or_create_plan(
@@ -846,6 +847,8 @@ def generate_qwen_image_prompt_plan(
             ),
         )
         _write_model(plan_path, plan)
+        if on_batch_committed:
+            on_batch_committed(plan, {asset_id})
 
     if "tiles" in roles:
         tile_requests = tile_requests or default_tile_requests()
@@ -932,6 +935,8 @@ def generate_qwen_image_prompt_plan(
             )
             prior_summaries.append(response.visual_summary)
             _write_model(plan_path, plan)
+            if on_batch_committed:
+                on_batch_committed(plan, {asset_id})
 
     if "answers" in roles:
         existing = {
@@ -1011,7 +1016,9 @@ def generate_qwen_image_prompt_plan(
                     progress=progress,
                 )
             labels = dict(source)
+            committed_ids: set[str] = set()
             for item in response.prompts:
+                committed_ids.add(item.asset_id)
                 _upsert(
                     plan,
                     PlannedImagePrompt(
@@ -1029,5 +1036,7 @@ def generate_qwen_image_prompt_plan(
                     ),
                 )
             _write_model(plan_path, plan)
+            if on_batch_committed:
+                on_batch_committed(plan, committed_ids)
 
     return plan

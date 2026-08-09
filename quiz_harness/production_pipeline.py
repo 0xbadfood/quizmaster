@@ -28,6 +28,7 @@ from .studio_publish import StudioPublishStore
 from .studio_questions import QuestionBankStore, generate_questions
 from .studio_sets import QuizSetStore
 from .studio_visuals import StudioVisualStore
+from .visual_generation_queue import VisualGenerationQueue
 
 
 DIFFICULTIES = ("beginner", "intermediate")
@@ -644,6 +645,36 @@ class CategoryProductionPipeline:
             )
         return result
 
+    def _consume_visual_queue(
+        self,
+        *,
+        category: dict[str, Any],
+        queue: VisualGenerationQueue,
+    ) -> None:
+        while True:
+            job = queue.claim()
+            if job is not None:
+                try:
+                    result = self._generate_visual_group(
+                        category=category,
+                        provider_id=str(job["provider_id"]),
+                        model_override=(
+                            str(job["model"]) if job.get("model") else None
+                        ),
+                        asset_ids={str(item) for item in job["asset_ids"]},
+                    )
+                except Exception as exc:
+                    queue.fail(str(job["id"]), str(exc))
+                else:
+                    queue.complete(str(job["id"]), result)
+                continue
+            summary = queue.summary()
+            producer_status = summary["producer"].get("status")
+            active = summary["jobs"]["queued"] + summary["jobs"]["running"]
+            if producer_status in {"complete", "failed"} and active == 0:
+                return
+            queue.wait()
+
     def _visual_branch(self, category: dict[str, Any]) -> dict[str, Any]:
         background = self._ensure_background(category)
         qwen = self._provider(
@@ -651,72 +682,121 @@ class CategoryProductionPipeline:
         )
         qwen_model = self._model(qwen, self.config.qwen_model)
         qwen_secret = self._secret(qwen)
-        self.checkpoint.update("visuals", {"status": "planning"})
-        with VLLMClient(
-            qwen["base_url"], timeout_seconds=900, api_key=qwen_secret
-        ) as client:
-            plan = self.visuals.plan_prompts(
-                category=category,
-                client=client,
-                endpoint=qwen["base_url"],
-                model=qwen_model,
-                roles={"selector", "tiles", "answers"},
-                guidance=category["editorial_brief"],
-                seed=self.config.seed,
-                force=False,
-                progress=lambda message, *_: self._log("visuals", message),
-            )
-        inventory = self.visuals.inventory(category)
-        category_ids = {
-            item["asset_id"]
-            for item in inventory["assets"]
-            if item["role"] in {"category_selector", "quiz_tile"}
-        }
-        answer_ids = {
-            item["asset_id"]
-            for item in inventory["assets"]
-            if item["role"] == "answer_image"
-        }
-        self.checkpoint.update(
-            "visuals",
-            {
-                "status": "generating",
-                "plan": plan,
-                "category_asset_count": len(category_ids),
-                "answer_asset_count": len(answer_ids),
-            },
+        queue = VisualGenerationQueue(
+            self.publisher.category_root(category["slug"])
+            / "visual-generation-queue"
         )
-        if self.config.tile_provider_id == self.config.answer_provider_id:
-            runs = {
-                "all": self._generate_visual_group(
-                    category=category,
-                    provider_id=self.config.tile_provider_id,
-                    model_override=self.config.tile_model or self.config.answer_model,
-                    asset_ids=category_ids | answer_ids,
+        queue.start_run(force=self.config.force_media)
+
+        def enqueue_planned(asset_ids: set[str]) -> None:
+            answer_ids = {item for item in asset_ids if item.startswith("answer_")}
+            category_ids = asset_ids - answer_ids
+            queue.enqueue(
+                provider_id=self.config.tile_provider_id,
+                model=self.config.tile_model,
+                asset_ids=category_ids,
+            )
+            queue.enqueue(
+                provider_id=self.config.answer_provider_id,
+                model=self.config.answer_model,
+                asset_ids=answer_ids,
+            )
+            self.checkpoint.update(
+                "visuals", {"status": "planning_and_generating", "queue": queue.summary()}
+            )
+
+        planning: dict[str, Any] | None = None
+        planning_error: str | None = None
+        self.checkpoint.update(
+            "visuals", {"status": "planning_and_generating", "queue": queue.summary()}
+        )
+        with ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="quiz-visual-generator"
+        ) as visual_pool:
+            consumer = visual_pool.submit(
+                self._consume_visual_queue, category=category, queue=queue
+            )
+            try:
+                with VLLMClient(
+                    qwen["base_url"], timeout_seconds=900, api_key=qwen_secret
+                ) as client:
+                    planning = self.visuals.plan_prompts(
+                        category=category,
+                        client=client,
+                        endpoint=qwen["base_url"],
+                        model=qwen_model,
+                        roles={"selector", "tiles", "answers"},
+                        guidance=category["editorial_brief"],
+                        seed=self.config.seed,
+                        force=False,
+                        progress=lambda message, *_: self._log("visuals", message),
+                        on_batch_planned=enqueue_planned,
+                    )
+                inventory = self.visuals.inventory(category)
+                enqueue_planned(
+                    {
+                        item["asset_id"]
+                        for item in inventory["assets"]
+                        if item["role"] in {
+                            "category_selector",
+                            "quiz_tile",
+                            "answer_image",
+                        }
+                    }
                 )
-            }
-        else:
-            runs = {
-                "category": self._generate_visual_group(
-                    category=category,
-                    provider_id=self.config.tile_provider_id,
-                    model_override=self.config.tile_model,
-                    asset_ids=category_ids,
-                ),
-                "answers": self._generate_visual_group(
-                    category=category,
-                    provider_id=self.config.answer_provider_id,
-                    model_override=self.config.answer_model,
-                    asset_ids=answer_ids,
-                ),
-            }
+                queue.requeue_missing(
+                    {
+                        item["asset_id"]
+                        for item in inventory["assets"]
+                        if item.get("image_url")
+                    }
+                )
+            except Exception as exc:
+                planning_error = str(exc)
+            finally:
+                queue.finish_planning(planning_error)
+
+            while True:
+                queue_summary = queue.summary()
+                visual_inventory = self.visuals.inventory(category)
+                self.checkpoint.update(
+                    "visuals",
+                    {
+                        "status": "planning_and_generating",
+                        "plan": planning,
+                        "queue": queue_summary,
+                        "summary": visual_inventory["summary"],
+                    },
+                )
+                active = (
+                    queue_summary["jobs"]["queued"]
+                    + queue_summary["jobs"]["running"]
+                )
+                producer_status = queue_summary["producer"].get("status")
+                if producer_status in {"complete", "failed"} and active == 0:
+                    break
+                if consumer.done() and active:
+                    raise CategoryPipelineError(
+                        f"visual generation worker stopped early: {consumer.exception()}"
+                    )
+                queue.wait()
+            consumer.result()
+
+        queue_summary = queue.summary()
+        if planning_error:
+            raise CategoryPipelineError(f"visual planning failed: {planning_error}")
+        if queue_summary["jobs"]["failed"]:
+            failures = "; ".join(
+                str(item.get("error")) for item in queue_summary["errors"]
+            )
+            raise CategoryPipelineError(f"visual generation queue failed: {failures}")
         final_inventory = self.visuals.inventory(category)
         if final_inventory["summary"]["generated"] != final_inventory["summary"]["total"]:
             raise CategoryPipelineError("visual branch ended with missing assets")
         result = {
             "background": background,
-            "plan": plan,
-            "runs": runs,
+            "plan": planning,
+            "queue": queue_summary,
             "summary": final_inventory["summary"],
         }
         self.checkpoint.update("visuals", {"status": "complete", "result": result})

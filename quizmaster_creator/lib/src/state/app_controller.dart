@@ -76,7 +76,7 @@ class AppController extends ChangeNotifier {
           ((baseUrl, token) => QuizmasterApi(baseUrl: baseUrl, token: token));
 
   static const defaultBaseUrl = 'https://quizmaster.photovault.live';
-  static const buildLabel = 'Build 3';
+  static const buildLabel = 'Build 4';
   static const compiledBaseUrl = String.fromEnvironment(
     'QUIZMASTER_API_URL',
     defaultValue: defaultBaseUrl,

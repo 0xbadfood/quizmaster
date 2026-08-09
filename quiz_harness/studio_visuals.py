@@ -333,6 +333,16 @@ class StudioVisualStore:
         model: str = "gpt-image-2",
         quality: str = "medium",
     ) -> tuple[AnimalCatalog, OpenAIImageSpecDocument]:
+        with VISUAL_WRITE_LOCK:
+            return self._prepare_unlocked(category, model=model, quality=quality)
+
+    def _prepare_unlocked(
+        self,
+        category: dict[str, Any],
+        *,
+        model: str,
+        quality: str,
+    ) -> tuple[AnimalCatalog, OpenAIImageSpecDocument]:
         root = self.category_root(category["slug"])
         catalog = self._catalog(category, persist=True)
         background = root / "assets/category/runtime_background.png"
@@ -533,10 +543,21 @@ class StudioVisualStore:
         seed: int,
         force: bool,
         progress: Callable[..., None],
+        on_batch_planned: Callable[[set[str]], None] | None = None,
     ) -> dict[str, Any]:
         root = self.category_root(category["slug"])
         catalog, _ = self.prepare(category)
         progress("Preparing visual subjects", 0.04)
+        category_spec_path = root / "category-image-spec.json"
+
+        def batch_committed(plan: ImagePromptPlan, asset_ids: set[str]) -> None:
+            with VISUAL_WRITE_LOCK:
+                apply_category_prompt_plan(
+                    plan=plan, category_spec_path=category_spec_path
+                )
+            if on_batch_planned:
+                on_batch_planned(asset_ids)
+
         plan = generate_qwen_image_prompt_plan(
             category=category["name"],
             display_title=category["display_title"],
@@ -552,10 +573,12 @@ class StudioVisualStore:
             force=force,
             refresh_tile_briefs=force,
             progress=_progress_adapter(progress, 0.08, 0.9),
+            on_batch_committed=batch_committed,
         )
-        apply_category_prompt_plan(
-            plan=plan, category_spec_path=root / "category-image-spec.json"
-        )
+        with VISUAL_WRITE_LOCK:
+            apply_category_prompt_plan(
+                plan=plan, category_spec_path=category_spec_path
+            )
         progress("Visual prompt plan ready", 0.96)
         return {
             "category_slug": category["slug"],
@@ -738,7 +761,6 @@ class StudioVisualStore:
                 for item in document.assets
             ]
             document = document.model_copy(update={"assets": updated})
-            write_image_spec(root / "category-image-spec.json", document)
             groups.append(
                 (document, root / "category-image-manifest.json", selected_category)
             )

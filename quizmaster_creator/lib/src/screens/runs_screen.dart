@@ -376,6 +376,19 @@ class _CurrentRunCard extends StatelessWidget {
       if (summary != null) {
         return '${summary['generated'] ?? 0} / ${summary['total'] ?? 0} images';
       }
+      final liveSummary = value['summary'] as Map?;
+      if (liveSummary != null) {
+        return '${liveSummary['generated'] ?? 0} / ${liveSummary['total'] ?? 0} images';
+      }
+      final queue = value['queue'] as Map?;
+      final assets = queue?['assets'] as Map?;
+      if (assets != null) {
+        final complete =
+            int.tryParse(assets['complete']?.toString() ?? '') ?? 0;
+        final total =
+            int.tryParse(queue?['total_assets']?.toString() ?? '') ?? 0;
+        return '$complete / $total planned images rendered';
+      }
       final category =
           int.tryParse(value['category_asset_count']?.toString() ?? '') ?? 0;
       final answers =
