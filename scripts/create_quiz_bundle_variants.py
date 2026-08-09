@@ -7,7 +7,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from quiz_harness.category_variants import create_free_variant, current_record_paths
+from quiz_harness.category_variants import (
+    all_record_paths,
+    create_free_variant,
+    current_record_paths,
+)
 
 
 def main() -> int:
@@ -18,13 +22,23 @@ def main() -> int:
         "--root", type=Path, default=Path("dist/category_bundles")
     )
     parser.add_argument("--category", action="append", default=[])
+    parser.add_argument(
+        "--all-versions",
+        action="store_true",
+        help="include inactive historical bundle versions",
+    )
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
 
     selected = set(args.category)
+    candidates = (
+        all_record_paths(args.root.resolve())
+        if args.all_versions
+        else current_record_paths(args.root.resolve())
+    )
     records = [
         path
-        for path in current_record_paths(args.root.resolve())
+        for path in candidates
         if not selected or path.parents[2].name in selected
     ]
     if not records:

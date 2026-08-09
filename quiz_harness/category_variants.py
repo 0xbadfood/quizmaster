@@ -58,6 +58,12 @@ def current_record_paths(root: Path) -> list[Path]:
     return records
 
 
+def all_record_paths(root: Path) -> list[Path]:
+    if not root.is_dir():
+        return []
+    return sorted(root.glob("*/versions/*/record.json"))
+
+
 def _free_quizzes(category: dict[str, Any]) -> list[dict[str, Any]]:
     quizzes = [
         item for item in category.get("quizzes", []) if isinstance(item, dict)
@@ -232,7 +238,9 @@ def create_free_variant(record_path: Path, *, force: bool = False) -> dict[str, 
         "free": free_variant,
         "full_library": full_variant,
     }
-    record_path.write_text(
+    temporary_record = record_path.with_suffix(record_path.suffix + ".tmp")
+    temporary_record.write_text(
         json.dumps(record, ensure_ascii=True, indent=2) + "\n", encoding="utf-8"
     )
+    temporary_record.replace(record_path)
     return {"status": "created", "record": record, "variant": free_variant}

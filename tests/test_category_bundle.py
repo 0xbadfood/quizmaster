@@ -363,6 +363,9 @@ def test_studio_publish_requires_audited_audio_and_tracks_releases(
     )
     assert first["bundle_version"] == 1
     assert first["reused_existing_version"] is False
+    assert set(first["access_variants"]) == {"free", "full_library"}
+    assert first["access_variants"]["free"]["available_quiz_count"] == 1
+    assert first["access_variants"]["full_library"]["available_quiz_count"] == 1
     assert messages[-1][0] == "Verifying release archive"
 
     unchanged = store.publish(
@@ -383,6 +386,13 @@ def test_studio_publish_requires_audited_audio_and_tracks_releases(
     assert first["release_slug"] == "animals"
     assert (output_root / "animals/current.json").is_file()
     assert not (output_root / "animal-catalog").exists()
+    assert (
+        output_root / "animals/versions/000001/animals-v000001-free.zip"
+    ).is_file()
+    release_record = json.loads(
+        (output_root / "animals/versions/000001/record.json").read_text()
+    )
+    assert set(release_record["access_variants"]) == {"free", "full_library"}
     archive, record = store.archive(category, 1)
     assert archive.is_file()
     assert record["archive_sha256"] == first["archive_sha256"]

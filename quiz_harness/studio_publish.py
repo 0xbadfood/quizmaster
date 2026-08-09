@@ -11,6 +11,7 @@ from .category_bundle import (
     build_category_bundle,
     category_bundle_slug,
 )
+from .category_variants import create_free_variant
 from .studio_catalog import category_metadata_status
 from .visual_bank import AnimalCatalog, VisualQuizSet
 
@@ -352,6 +353,12 @@ class StudioPublishStore:
                 force_new_version=force_new_version,
                 activate=activate,
             )
+            record_path = (
+                self.category_output(self.release_slug(category))
+                / str(record["record_file"])
+            )
+            variant_result = create_free_variant(record_path)
+            record = variant_result["record"]
             progress("Verifying release archive", 0.9)
             release_slug = self.release_slug(category)
             archive = self.category_output(release_slug) / record["archive_file"]
@@ -369,6 +376,20 @@ class StudioPublishStore:
                 "content_hash": record["content_hash"],
                 "archive_bytes": record["archive_bytes"],
                 "archive_sha256": record["archive_sha256"],
+                "access_variants": {
+                    name: {
+                        key: variant.get(key)
+                        for key in (
+                            "access_variant",
+                            "archive_file",
+                            "archive_bytes",
+                            "archive_sha256",
+                            "available_quiz_count",
+                            "available_question_count",
+                        )
+                    }
+                    for name, variant in record["access_variants"].items()
+                },
                 "reused_existing_version": version in existing_versions,
                 "deployment_status": (
                     "deployed" if version == current_version else "deployable"

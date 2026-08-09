@@ -14,18 +14,21 @@ it is deliberately migrated later.
 
 ## Bundle variants
 
-Published full bundles remain the canonical Quizmaster artifacts. Generate a
-one-beginner-quiz compatibility variant for each current category with:
+Every production publish creates both a `full_library` archive and a compatibility
+`free` archive containing the first beginner quiz and only its runtime dependencies.
+Both are recorded under `access_variants`; `free_variant` remains during the V1
+Story Generator migration window.
+
+Repair or migrate every historical release with:
 
 ```bash
-python3 scripts/create_quiz_bundle_variants.py --force
+python3 scripts/create_quiz_bundle_variants.py --all-versions
 ```
 
-The command records both `access_variants.full_library` and
-`access_variants.free` without changing the top-level full bundle. Compatibility
-archives contain only the selected quiz and its referenced answer and narration
-assets. The Quizmaster delivery API always resolves the full-library variant and
-reports `access.has_full_access: true`.
+Compatibility archives retain all category and tile artwork but contain only the
+selected quiz and its referenced answer and narration assets. The Quizmaster
+delivery API always resolves the full-library variant and reports
+`access.has_full_access: true`.
 
 The emergency Story Generator split has separate V1 hardening notes in
 [`STORY_GENERATOR_V1_SPLIT_AUDIT.md`](STORY_GENERATOR_V1_SPLIT_AUDIT.md).

@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
-from quiz_harness.category_variants import create_free_variant
+from quiz_harness.category_variants import all_record_paths, create_free_variant
 
 
 def _write_full_release(root: Path) -> Path:
@@ -144,3 +144,14 @@ def test_free_variant_keeps_catalog_tiles_and_only_playable_dependencies(
     assert record["access_variants"]["full_library"]["archive_file"].endswith(
         "animals-v000001.zip"
     )
+
+
+def test_all_record_paths_includes_inactive_versions(tmp_path: Path) -> None:
+    first = tmp_path / "animals/versions/000001/record.json"
+    second = tmp_path / "animals/versions/000002/record.json"
+    first.parent.mkdir(parents=True)
+    second.parent.mkdir(parents=True)
+    first.write_text("{}", encoding="utf-8")
+    second.write_text("{}", encoding="utf-8")
+
+    assert all_record_paths(tmp_path) == [first, second]
