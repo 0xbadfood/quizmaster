@@ -243,9 +243,14 @@ def load_prompt_subjects(path: Path) -> list[PromptSubject]:
                 for name in ("subject_key", "object_key", "animal_key", "key", "id")
                 if isinstance(record.get(name), str) and record.get(name)
             ),
-            slugify(label),
+            None,
         )
-        subjects.append(PromptSubject(subject_key=key, label=label.strip()))
+        if key is None:
+            key = slugify(label)
+        planning_label = label.strip()
+        if not re.search(r"[a-z0-9]", planning_label, flags=re.IGNORECASE):
+            planning_label = key.replace("_", " ").title()
+        subjects.append(PromptSubject(subject_key=key, label=planning_label))
     keys = [item.subject_key for item in subjects]
     if len(keys) != len(set(keys)):
         raise ValueError("subject catalog keys must be unique")

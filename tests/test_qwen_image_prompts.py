@@ -98,6 +98,21 @@ def test_generic_subject_catalog_accepts_objects(tmp_path: Path) -> None:
     assert subjects[0].label == "Taj Mahal"
 
 
+def test_subject_catalog_uses_stable_key_for_non_ascii_planning_label(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "mountain_catalog.json"
+    path.write_text(
+        json.dumps({"objects": [{"object_key": "xueshan", "label": "雪山"}]}),
+        encoding="utf-8",
+    )
+
+    subjects = load_prompt_subjects(path)
+
+    assert subjects[0].subject_key == "xueshan"
+    assert subjects[0].label == "Xueshan"
+
+
 def test_tile_prompt_carries_exact_text_age_and_variation_context() -> None:
     choices = [
         VisualChoice(choice_id=f"choice{index}", animal_key=label, label=label.title())
