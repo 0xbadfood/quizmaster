@@ -708,7 +708,12 @@ class CategoryProductionPipeline:
         planning: dict[str, Any] | None = None
         planning_error: str | None = None
         self.checkpoint.update(
-            "visuals", {"status": "planning_and_generating", "queue": queue.summary()}
+            "visuals",
+            {
+                "status": "planning_and_generating",
+                "error": None,
+                "queue": queue.summary(),
+            },
         )
         with ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="quiz-visual-generator"

@@ -319,8 +319,10 @@ def test_visual_generation_consumes_committed_batch_before_planning_finishes(
             return tmp_path / slug
 
     class Checkpoint:
+        updates: list[dict[str, object]] = []
+
         def update(self, _name: str, _value: dict[str, object]) -> None:
-            return None
+            self.updates.append(_value)
 
     monkeypatch.setattr("quiz_harness.production_pipeline.VLLMClient", Client)
     pipeline = object.__new__(CategoryProductionPipeline)
@@ -361,3 +363,4 @@ def test_visual_generation_consumes_committed_batch_before_planning_finishes(
     assert planner_observed_generation is True
     assert result["summary"]["generated"] == 1
     assert result["queue"]["jobs"]["complete"] == 1
+    assert pipeline.checkpoint.updates[0]["error"] is None
