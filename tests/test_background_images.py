@@ -121,6 +121,51 @@ def test_background_plan_accepts_vertical_mobile_prompt_alias() -> None:
     assert plan.prompt.startswith("Create a vertical 9:16")
 
 
+def test_background_plan_compacts_nested_focal_elements_without_rewriting_prompt() -> None:
+    prompt = (
+        "A vertical 941x1672 digital illustration for MOUNTAINS QUIZ with the exact "
+        "subtitle ADVENTURE. Reserve the upper area for a dimensional title emblem, "
+        "keep the central area calm and uncluttered for quiz controls, and frame the "
+        "outer edges with generic alpine peaks, trees, and wildflowers. Use polished "
+        "family-friendly three-dimensional artwork, cheerful natural colors, soft "
+        "daylight, crisp silhouettes, appealing depth, and generous safe margins. "
+        "Show no identifiable mountain that could reveal a quiz answer. Include no "
+        "other text, dates, labels, logos, watermarks, interface controls, political "
+        "symbols, malformed anatomy, borders, duplicate subjects, or collage panels."
+    )
+    raw = json.dumps(
+        {
+            "scene_concept": {
+                "description": (
+                    "A coherent alpine landscape uses generic peaks and vegetation "
+                    "to create a welcoming educational mountain adventure."
+                ),
+                "focal_elements": [
+                    "A dimensional title emblem in the upper sky.",
+                    "A calm, lower-contrast, relatively uncluttered central alpine "
+                    "meadow and clear sky specifically reserved for interface controls.",
+                    "Detailed stylized mountain peaks, alpine trees, and wildflowers "
+                    "framing the lower and outer edges for visual storytelling.",
+                ],
+                "supporting_subjects": "Generic alpine trees; soft clouds",
+                "environment": "A high-altitude meadow",
+                "palette": "Natural sky blue, green, white, and warm gold accents.",
+                "lighting": "Soft daylight with gentle shadows and clear depth.",
+            },
+            "final_renderer_prompt": prompt,
+        }
+    )
+
+    plan = _parse_prompt_plan(raw)
+    _validate_prompt_plan(
+        plan, display_title="MOUNTAINS QUIZ", subtitle="ADVENTURE"
+    )
+
+    assert len(plan.focal_elements) == 3
+    assert all(len(item) <= 140 for item in plan.focal_elements)
+    assert plan.prompt == prompt
+
+
 def test_normalize_background_writes_runtime_dimensions(tmp_path: Path) -> None:
     source = Image.new("RGB", (800, 800), (220, 130, 50))
     payload = io.BytesIO()

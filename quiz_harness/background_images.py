@@ -105,7 +105,8 @@ def _validate_prompt_plan(
     if named_style:
         raise ValueError(f"background prompt names copyrighted style: {named_style}")
     vertical_mobile = "vertical" in folded and any(
-        marker in folded for marker in ("9:16", "mobile screen", "tall screen")
+        marker in folded
+        for marker in ("9:16", "941x1672", "mobile screen", "tall screen")
     )
     if "portrait" not in folded and not vertical_mobile:
         raise ValueError("background prompt must explicitly request portrait composition")
@@ -115,12 +116,37 @@ def _text(value: Any) -> str:
     return str(value or "").strip()
 
 
-def _normalize_focal_elements(value: Any) -> list[str]:
+def _compact_text(value: str, limit: int) -> str:
+    if len(value) <= limit:
+        return value
+    shortened = value[: limit - 3].rsplit(" ", 1)[0].rstrip(" ,;:.-")
+    return f"{shortened}..."
+
+
+def _normalize_focal_elements(
+    value: Any, *, fallbacks: tuple[Any, ...] = ()
+) -> list[str]:
     if isinstance(value, list):
         items = [_text(item) for item in value]
     else:
         items = [item.strip() for item in _text(value).replace(";", ",").split(",")]
-    return [item for item in items if item][:8]
+    for fallback in fallbacks:
+        if len([item for item in items if item]) >= 3:
+            break
+        items.extend(
+            item.strip()
+            for item in _text(fallback).replace(";", ",").split(",")
+        )
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        item = _compact_text(item.strip(), 140)
+        key = item.casefold()
+        if len(item) < 3 or key in seen:
+            continue
+        seen.add(key)
+        normalized.append(item)
+    return normalized[:8]
 
 
 def _parse_prompt_plan(raw: str) -> BackgroundPromptPlan:
@@ -138,7 +164,12 @@ def _parse_prompt_plan(raw: str) -> BackgroundPromptPlan:
         or value.get("final_prompt")
     )
     focal_elements = _normalize_focal_elements(
-        value.get("focal_elements") or scene.get("focal_elements")
+        value.get("focal_elements") or scene.get("focal_elements"),
+        fallbacks=(
+            scene.get("supporting_subjects"),
+            scene.get("environment"),
+            scene_concept,
+        ),
     )
     visual_summary = _text(value.get("visual_summary") or scene_concept)
     composition = _text(value.get("composition")) or (
