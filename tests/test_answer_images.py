@@ -1,14 +1,19 @@
 from quiz_harness.answer_images import answer_image_prompt, stable_seed
 
 
-def test_answer_prompt_is_category_neutral_and_child_friendly() -> None:
+def test_answer_prompt_is_category_neutral_and_reference_faithful() -> None:
     prompt = answer_image_prompt("African elephant")
     assert "recognizable specifically as African elephant" in prompt
     assert "concrete object, living thing, place, or landmark" in prompt
     assert "prepared dish, material, group, nutrient, process, or abstract concept" in prompt
-    assert "high-end 3D animated family-film rendering" in prompt
+    assert "reference-faithful, realistic" in prompt
+    assert "correct number and placement of limbs and appendages" in prompt
+    assert "Do not cartoonize, stylize, anthropomorphize, beautify" in prompt
     assert "comfortable square margins" in prompt
     assert "No text, letters, numbers" in prompt
+    assert "child-friendly" not in prompt
+    assert "3D animated" not in prompt
+    assert "family-film" not in prompt
     assert "Pixar" not in prompt
     assert "Disney" not in prompt
 

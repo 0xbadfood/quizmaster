@@ -39,9 +39,9 @@ from quiz_harness.visual_bank import (
 
 def _long_prompt(label: str) -> str:
     return (
-        f"Create a production-ready square image of {label} with accurate visible "
-        "features, clear silhouettes, balanced cinematic lighting, comfortable safe "
-        "margins, polished child-friendly three-dimensional artwork, natural colors, "
+        f"Create a reference-faithful production-ready square image of {label} with "
+        "accurate visible features, clear silhouettes, natural lighting, comfortable "
+        "safe margins, realistic anatomy and proportions, natural colors, "
         "and no unwanted text, logos, borders, watermarks, or duplicate subjects."
     )
 
@@ -302,6 +302,37 @@ def test_answer_planner_supports_concepts_without_category_special_cases() -> No
     assert "abstract concept" in prompt
     assert "minimum supporting elements" in prompt
     assert "competing answer subjects" in prompt
+    assert "reference-image prompt" in prompt
+    assert "correct number and placement of limbs" in prompt
+    assert "Do not cartoonize, stylize, anthropomorphize" in prompt
+    assert "child-friendly" not in prompt
+    assert "3D animated" not in prompt
+
+
+@pytest.mark.parametrize(
+    "style_direction",
+    (
+        "cute child-friendly illustration",
+        "polished 3D animated family-film rendering",
+        "adorable cartoon animal with oversized eyes",
+        "stylized anthropomorphic character",
+    ),
+)
+def test_answer_validator_rejects_child_facing_style(
+    style_direction: str,
+) -> None:
+    item = AnswerImagePromptResponse(
+        asset_id="answer_snake",
+        prompt=(
+            "Create a square reference image of a snake with accurate visible anatomy, "
+            f"natural lighting, and {style_direction}. Center the complete snake with "
+            "comfortable margins in a simple habitat context, keep its markings clearly "
+            "visible, and avoid all text, labels, logos, watermarks, borders, or clutter."
+        ),
+        identity_cues=["elongated limbless body", "natural scale texture"],
+    )
+    with pytest.raises(ValueError, match="child-facing"):
+        _validate_answer_prompt(item, expected_label="Snake")
 
 
 def test_request_json_recovers_prior_raw_response_after_validator_change(

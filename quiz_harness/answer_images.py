@@ -14,25 +14,33 @@ from .imagestudio import ImageStudioClient
 from .visual_bank import AnimalCatalog
 
 
-PROMPT_VERSION = "animal-answer-3d-v4"
+PROMPT_VERSION = "answer-reference-realism-v5"
 DEFAULT_NEGATIVE_PROMPT = (
-    "text, letters, numbers, caption, logo, watermark, border, duplicate subject, blur"
+    "text, letters, numbers, caption, logo, watermark, border, duplicate subject, blur, "
+    "cartoon, caricature, anthropomorphic features, human clothing, accessories, "
+    "oversized eyes, added limbs, missing limbs, incorrect limb count, malformed anatomy, "
+    "altered proportions, invented markings"
 )
 
 
 def answer_image_prompt(label: str) -> str:
     return (
-        f"Create an accurate, child-friendly visual representation of {label}. It "
+        f"Create a reference-faithful, realistic visual representation of {label}. It "
         f"must be immediately recognizable specifically as {label}, not a related or "
         "generic subject. For a concrete object, living thing, place, or landmark, "
-        "show one complete primary instance with accurate real-world form, materials, "
-        "colors, proportions, and diagnostic visible features. For a prepared dish, "
+        "show one complete primary instance with accurate real-world anatomy, form, "
+        "materials, colors, proportions, and diagnostic visible features. A living "
+        "subject must have the correct number and placement of limbs and appendages, "
+        "natural posture, joints, texture, coloration, and markings. Never add a body "
+        "part, human trait, facial expression, clothing, accessory, or decoration that "
+        "the real subject does not possess. For a prepared dish, "
         "material, group, nutrient, process, or abstract concept, show one coherent "
         "plated, contained, or educational arrangement with only the minimum supporting "
         "elements needed to communicate the answer. Center the focal representation "
-        "with a strong silhouette and comfortable square margins. Use polished high-end "
-        "3D animated family-film rendering, vivid natural color, bright cinematic "
-        "lighting, and a simple softly blurred context appropriate to the subject. "
+        "with a strong silhouette and comfortable square margins. Use photographic, "
+        "field-guide, museum-reference, or product-reference realism as appropriate, "
+        "with natural color and lighting and a simple unobtrusive real-world context. "
+        "Do not cartoonize, stylize, anthropomorphize, beautify, or exaggerate the subject. "
         "No text, letters, numbers, labels, logos, watermarks, borders, competing answer "
         "subjects, needless duplicates, or incorrect physical details."
     )

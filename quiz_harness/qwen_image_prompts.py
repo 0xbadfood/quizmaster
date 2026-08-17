@@ -396,8 +396,9 @@ def answer_batch_planning_prompt(
         {"asset_id": asset_id, "exact_subject": label}
         for asset_id, label in assets
     ]
-    return f"""Write one production-ready text-to-image prompt for every supplied answer
-object in a children's {category} picture quiz.
+    return f"""Write one production-ready reference-image prompt for every supplied answer
+object in a {category} picture quiz. These images are factual answer references, not
+decorative children's illustrations.
 
 Input objects:
 {json.dumps(payload, indent=2, ensure_ascii=True)}
@@ -418,12 +419,19 @@ related or generic subject when the label is specific. Include only details you 
 confidently; fewer accurate cues are better than invented or exaggerated details.
 
 Each prompt must request one centered focal representation with a strong silhouette,
-comfortable square margins, bright cinematic lighting, a friendly natural expression
-when applicable, polished high-end 3D animated family-film rendering, and a simple
-softly blurred category-appropriate context. It must forbid text, letters, numbers,
-labels, logos, watermarks, borders, competing answer subjects, needless duplicates,
-and incorrect physical details. Do not name studios, films, living artists, or
-trademarked characters. Return every input asset_id exactly once and unchanged."""
+comfortable square margins, natural lighting and color, and photographic, field-guide,
+museum-reference, or product-reference realism appropriate to the subject. For every
+living subject, preserve its real anatomy: the correct number and placement of limbs,
+wings, fins, antennae, horns, and other appendages; natural proportions, joints,
+posture, texture, coloration, markings, and diagnostic features. If the subject lacks
+a body part, do not add it. Never make a subject prettier or friendlier by adding large
+eyes, smiles, human expressions, clothing, accessories, decorative anatomy, or altered
+proportions. Do not cartoonize, stylize, anthropomorphize, beautify, or exaggerate it.
+For historical objects, places, and landmarks, preserve the correct period, geometry,
+materials, scale, and geography. It must forbid text, letters, numbers, labels, logos,
+watermarks, borders, competing answer subjects, needless duplicates, and incorrect
+physical details. Do not name studios, films, living artists, or trademarked
+characters. Return every input asset_id exactly once and unchanged."""
 
 
 def answer_batch_review_prompt(
@@ -433,8 +441,9 @@ def answer_batch_review_prompt(
     draft: AnswerImagePromptBatchResponse,
 ) -> str:
     labels = {asset_id: label for asset_id, label in assets}
-    return f"""Act as a conservative factual editor for children's {category} answer-image
-prompts. Review every draft below against the exact subject label.
+    return f"""Act as a conservative factual editor for {category} answer-reference image
+prompts. Review every draft below against the exact subject label. These are factual
+references, not decorative children's illustrations.
 
 Exact labels by immutable asset_id:
 {json.dumps(labels, indent=2, ensure_ascii=True)}
@@ -447,11 +456,16 @@ identity, appearance, anatomy, material, geography, period, architecture, settin
 context. Check diagnostic distinctions from closely related subjects. A short prompt
 that repeatedly names the exact subject and requests reference accuracy is preferable
 to a detailed prompt containing one uncertain feature. Do not invent replacement
-details. Keep the square, centered, single-focal-representation, child-friendly 3D art
-direction and all no-text/no-competing-answer constraints. Concrete answers should
-remain a single primary instance; abstract or group concepts may use a minimal coherent
-arrangement. identity_cues must contain only visible traits you are highly confident
-are correct."""
+details. Replace any cartoon, stylized, anthropomorphic, beautified, or exaggerated art
+direction with photographic, field-guide, museum-reference, or product-reference
+realism appropriate to the subject. For living subjects, explicitly preserve the real
+number and placement of limbs and appendages, anatomy, proportions, posture, texture,
+coloration, markings, and diagnostic features. Do not add human expressions, clothing,
+accessories, decorative anatomy, or any body part the subject does not possess. Keep
+the square, centered, single-focal-representation and all no-text/no-competing-answer
+constraints. Concrete answers should remain a single primary instance; abstract or
+group concepts may use a minimal coherent arrangement. identity_cues must contain only
+visible traits you are highly confident are correct."""
 
 
 def _request_json(
@@ -467,6 +481,7 @@ def _request_json(
     force: bool,
     validate: Callable[[ResponseModel], None] | None = None,
     progress: Callable[[str], None] | None = None,
+    system_instruction: str | None = None,
 ) -> ResponseModel:
     if call_path.exists() and not force:
         try:
@@ -504,7 +519,7 @@ def _request_json(
     messages = [
         {
             "role": "system",
-            "content": (
+            "content": system_instruction or (
                 "You are an expert children's text-to-image prompt writer. Return "
                 "only JSON matching the schema. Be visually specific and concise."
             ),
@@ -625,7 +640,12 @@ def _finalize_prompt(prompt: str, *, role: str) -> str:
     else:
         policy = (
             "No text, letters, numbers, labels, captions, competing answer subjects, "
-            "or incorrect physical details. Show one clear focal representation."
+            "or incorrect physical details. Show one clear, reference-faithful focal "
+            "representation. Preserve real anatomy, limb and appendage count, proportions, "
+            "posture, materials, colors, markings, and diagnostic features. Do not "
+            "cartoonize, stylize, anthropomorphize, beautify, or exaggerate the subject; "
+            "do not add human expressions, clothing, accessories, decorative anatomy, "
+            "or body parts the real subject does not possess."
         )
     return f"{prompt.strip()}\n\nMandatory exclusions: {common} {policy}"
 
@@ -721,8 +741,38 @@ def _validate_answer_prompt(
     item: AnswerImagePromptResponse, *, expected_label: str
 ) -> None:
     _validate_common_prompt(item.prompt)
+    normalized = normalize_text(item.prompt)
+    child_facing_patterns = (
+        r"\bchild[- ]friendly\b",
+        r"\bchildren(?:'s)?\s+(?:art|artwork|illustration|image|picture)\b",
+        r"\b3d animated\b",
+        r"\bfamily[- ]film\b",
+        r"\b(?:cute|adorable|cartoon(?:ish)?|stylized|anthropomorphic) "
+        r"(?:art|artwork|character|design|illustration|image|render|rendering|style|treatment)\b",
+        r"\b(?:friendly|human-like) (?:face|facial expression|expression|smile)\b",
+        r"\boversized eyes\b",
+    )
+    if any(re.search(pattern, normalized) for pattern in child_facing_patterns):
+        raise ValueError(
+            "answer prompt requests child-facing, stylized, or anthropomorphic treatment"
+        )
     if not _prompt_names_subject(item.prompt, expected_label):
         raise ValueError(f"answer prompt does not name exact subject {expected_label}")
+
+
+def _answer_prompt_uses_reference_policy(prompt: str) -> bool:
+    normalized = normalize_text(prompt)
+    legacy_markers = (
+        "child-friendly",
+        "child friendly",
+        "3d animated",
+        "family-film",
+        "family film",
+    )
+    return (
+        "reference-faithful" in normalized
+        and not any(marker in normalized for marker in legacy_markers)
+    )
 
 
 def _sanitize_answer_prompt_subject(
@@ -945,7 +995,10 @@ def generate_qwen_image_prompt_plan(
 
     if "answers" in roles:
         existing = {
-            item.asset_id for item in plan.assets if item.role == "answer_image"
+            item.asset_id
+            for item in plan.assets
+            if item.role == "answer_image"
+            and _answer_prompt_uses_reference_policy(item.prompt)
         }
         selected = [
             subject
@@ -998,6 +1051,13 @@ def generate_qwen_image_prompt_plan(
                 force=force,
                 validate=validate_answer_batch,
                 progress=progress,
+                system_instruction=(
+                    "You write factual, reference-faithful text-to-image prompts. "
+                    "Answer images must preserve real anatomy, proportions, materials, "
+                    "colors, markings, and diagnostic features. Never make them cute, "
+                    "cartoon-like, stylized, anthropomorphic, or child-facing. Return "
+                    "only JSON matching the schema."
+                ),
             )
             if review_answers:
                 review_seed = stable_prompt_seed(
@@ -1019,6 +1079,13 @@ def generate_qwen_image_prompt_plan(
                     force=force,
                     validate=validate_answer_batch,
                     progress=progress,
+                    system_instruction=(
+                        "You are a strict factual image-prompt reviewer. Preserve the "
+                        "literal identity and real physical characteristics of every "
+                        "answer subject. Remove child-facing, cute, cartoon, stylized, "
+                        "anthropomorphic, or beautifying directions. Return only JSON "
+                        "matching the schema."
+                    ),
                 )
             labels = dict(source)
             committed_ids: set[str] = set()
@@ -1034,7 +1101,11 @@ def generate_qwen_image_prompt_plan(
                         prompt=_finalize_prompt(item.prompt, role="answer_image"),
                         negative_prompt=(
                             "text, letters, numbers, caption, logo, watermark, border, "
-                            "duplicate subject, unrelated objects, blur, incorrect details"
+                            "duplicate subject, unrelated objects, blur, cartoon, caricature, "
+                            "stylized anatomy, anthropomorphic features, human clothing, "
+                            "accessories, oversized eyes, added limbs, missing limbs, "
+                            "incorrect limb count, malformed anatomy, altered proportions, "
+                            "invented markings"
                         ),
                         source_labels=[labels[item.asset_id]],
                         visual_summary="; ".join(item.identity_cues),

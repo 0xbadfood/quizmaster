@@ -50,6 +50,12 @@ VISUAL_REVIEW_STATUSES = ("generated_pending_review", "approved", "rejected")
 IMAGESTUDIO_NEGATIVE_PROMPT = (
     "watermark, unwanted logo, cropped subject, duplicate subject, blur, distortion"
 )
+ANSWER_IMAGESTUDIO_NEGATIVE_PROMPT = (
+    f"{IMAGESTUDIO_NEGATIVE_PROMPT}, cartoon, caricature, stylized anatomy, "
+    "anthropomorphic features, human clothing, accessories, oversized eyes, added limbs, "
+    "missing limbs, incorrect limb count, malformed anatomy, altered proportions, "
+    "invented markings"
+)
 
 
 class StudioVisualError(ValueError):
@@ -160,6 +166,11 @@ def _generate_imagestudio_assets(
             raise StudioVisualError(f"{asset.asset_id} has no generation prompt")
         output = root / asset.file
         seed = _imagestudio_seed(asset.asset_id, model)
+        negative_prompt = (
+            ANSWER_IMAGESTUDIO_NEGATIVE_PROMPT
+            if asset.role == "answer_image"
+            else IMAGESTUDIO_NEGATIVE_PROMPT
+        )
         fingerprint = hashlib.sha256(
             json.dumps(
                 {
@@ -169,6 +180,7 @@ def _generate_imagestudio_assets(
                     "width": asset.output_width,
                     "height": asset.output_height,
                     "seed": seed,
+                    "negative_prompt": negative_prompt,
                 },
                 sort_keys=True,
             ).encode()
@@ -189,7 +201,7 @@ def _generate_imagestudio_assets(
             try:
                 data, metadata = client.generate(
                     prompt=asset.prompt,
-                    negative_prompt=IMAGESTUDIO_NEGATIVE_PROMPT,
+                    negative_prompt=negative_prompt,
                     width=asset.output_width,
                     height=asset.output_height,
                     steps=8,
