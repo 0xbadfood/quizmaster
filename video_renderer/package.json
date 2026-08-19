@@ -1,0 +1,24 @@
+{
+  "name": "quizmaster-video-renderer",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "prepare:geography": "python3 ../scripts/prepare_remotion_quiz.py --category geography --difficulty beginner --number 1",
+    "studio": "remotion studio src/index.ts",
+    "render:preview": "remotion render src/index.ts QuizPrototype output/geography-quiz-1-preview.mp4 --codec=h264 --crf=20 --scale=0.5 --concurrency=4",
+    "render": "remotion render src/index.ts QuizPrototype output/geography-quiz-1.mp4 --codec=h264 --crf=18 --concurrency=4",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.513",
+    "@remotion/renderer": "4.0.513",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "remotion": "4.0.513"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.10",
+    "@types/react-dom": "19.1.7",
+    "typescript": "5.9.2"
+  }
+}

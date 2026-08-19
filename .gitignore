@@ -31,3 +31,8 @@ data/assets/**
 # Frontend dependencies and build output
 /webui/node_modules/
 /webui/dist/
+
+# Remotion prototype dependencies and generated render artifacts
+/video_renderer/node_modules/
+/video_renderer/public/quiz/
+/video_renderer/output/
