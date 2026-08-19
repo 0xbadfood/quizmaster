@@ -10,7 +10,7 @@ const data = quizData as QuizVideoData;
 export const QuizRoot: React.FC = () => {
   return (
     <Composition
-      id="QuizPrototype"
+      id="QuizVideo"
       component={QuizVideo}
       width={data.width}
       height={data.height}

@@ -19,7 +19,12 @@ import {
   TRANSITION_FRAMES,
   questionTiming,
 } from './timing';
-import type {QuizChoice, QuizVideoData, VideoQuestion} from './types';
+import type {
+  QuizChoice,
+  QuizVideoData,
+  VideoPresentationAssets,
+  VideoQuestion,
+} from './types';
 
 const colors = {
   ink: '#10253d',
@@ -105,6 +110,41 @@ const Progress: React.FC<{current: number; total: number}> = ({
         </React.Fragment>
       );
     })}
+  </div>
+);
+
+const LandscapeProgress: React.FC<{
+  current: number;
+  total: number;
+  plaque: string;
+}> = ({current, total, plaque}) => (
+  <div
+    style={{
+      position: 'absolute',
+      top: 28,
+      right: 34,
+      width: 360,
+      height: 96,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+    }}
+  >
+    <Img
+      src={staticFile(plaque)}
+      style={{position: 'absolute', width: '100%', height: '100%'}}
+    />
+    <div
+      style={{
+        position: 'relative',
+        color: colors.ink,
+        fontSize: 22,
+        fontWeight: 900,
+        textTransform: 'uppercase',
+      }}
+    >
+      Question {current} of {total}
+    </div>
   </div>
 );
 
@@ -211,6 +251,170 @@ const ChoiceCard: React.FC<{
     </div>
   );
 };
+
+const LandscapeChoiceCard: React.FC<{
+  choice: QuizChoice;
+  letter: string;
+  frame: string;
+  badge: string;
+}> = ({choice, letter, frame, badge}) => (
+  <div style={{position: 'relative', height: 405}}>
+    <Img
+      src={staticFile(frame)}
+      style={{position: 'absolute', width: '100%', height: '100%'}}
+    />
+    <Img
+      src={staticFile(choice.image)}
+      style={{
+        position: 'absolute',
+        top: 34,
+        left: 52,
+        right: 52,
+        width: 'calc(100% - 104px)',
+        height: 282,
+        objectFit: 'contain',
+      }}
+    />
+    <div
+      style={{
+        position: 'absolute',
+        left: 38,
+        right: 38,
+        bottom: 27,
+        height: 58,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: colors.ink,
+        fontSize: choice.label.length > 15 ? 20 : 23,
+        lineHeight: 1.05,
+        fontWeight: 900,
+        textAlign: 'center',
+      }}
+    >
+      {choice.label}
+    </div>
+    <div
+      style={{
+        position: 'absolute',
+        top: -18,
+        left: -16,
+        width: 78,
+        height: 78,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Img
+        src={staticFile(badge)}
+        style={{position: 'absolute', width: '100%', height: '100%'}}
+      />
+      <span
+        style={{
+          position: 'relative',
+          color: colors.white,
+          fontSize: 38,
+          fontWeight: 900,
+          textShadow: '0 3px 3px rgba(0,0,0,0.45)',
+        }}
+      >
+        {letter}
+      </span>
+    </div>
+  </div>
+);
+
+const LandscapeAnswerOverlay: React.FC<{
+  answer: QuizChoice;
+  explanation: string;
+  frame: string;
+  revealProgress: number;
+  explanationProgress: number;
+}> = ({
+  answer,
+  explanation,
+  frame,
+  revealProgress,
+  explanationProgress,
+}) => (
+  <div
+    style={{
+      position: 'absolute',
+      top: 285,
+      left: 355,
+      width: 1210,
+      height: 720,
+      opacity: revealProgress,
+      transform: `translateY(${(1 - revealProgress) * 45}px) scale(${0.97 + revealProgress * 0.03})`,
+    }}
+  >
+    <Img
+      src={staticFile(frame)}
+      style={{position: 'absolute', width: '100%', height: '100%'}}
+    />
+    <div
+      style={{
+        position: 'absolute',
+        top: 112,
+        left: 92,
+        right: 92,
+        color: colors.greenDark,
+        fontSize: 32,
+        fontWeight: 900,
+        textAlign: 'center',
+        textTransform: 'uppercase',
+      }}
+    >
+      Correct answer
+    </div>
+    <Img
+      src={staticFile(answer.image)}
+      style={{
+        position: 'absolute',
+        top: 150,
+        left: 105,
+        width: 350,
+        height: 350,
+        objectFit: 'contain',
+      }}
+    />
+    <div
+      style={{
+        position: 'absolute',
+        left: 95,
+        top: 520,
+        width: 415,
+        color: colors.ink,
+        fontSize: answer.label.length > 22 ? 30 : 36,
+        lineHeight: 1.05,
+        fontWeight: 900,
+        textAlign: 'center',
+      }}
+    >
+      {answer.label}
+    </div>
+    <div
+      style={{
+        position: 'absolute',
+        top: 160,
+        left: 555,
+        right: 105,
+        bottom: 100,
+        display: 'flex',
+        alignItems: 'center',
+        color: colors.ink,
+        fontSize: explanation.length > 170 ? 31 : 36,
+        lineHeight: 1.22,
+        fontWeight: 800,
+        opacity: explanationProgress,
+        transform: `translateY(${(1 - explanationProgress) * 20}px)`,
+      }}
+    >
+      {explanation}
+    </div>
+  </div>
+);
 
 const AnswerOverlay: React.FC<{
   answer: QuizChoice;
@@ -320,13 +524,14 @@ const AnswerOverlay: React.FC<{
 
 const QuestionScene: React.FC<{
   question: VideoQuestion;
-  index: number;
-  total: number;
+  totalQuestions: number;
   background: string;
   timerAudio: string;
-}> = ({question, index, total, background, timerAudio}) => {
+  presentation: VideoPresentationAssets;
+}> = ({question, totalQuestions, background, timerAudio, presentation}) => {
   const frame = useCurrentFrame();
-  const {fps} = useVideoConfig();
+  const {fps, width, height} = useVideoConfig();
+  const landscape = width > height;
   const timing = questionTiming(question, fps);
   const entrance = spring({frame, fps, config: {damping: 18, stiffness: 120}});
   const exitOpacity = interpolate(
@@ -367,84 +572,173 @@ const QuestionScene: React.FC<{
             'linear-gradient(to bottom, rgba(2,14,30,0.02) 0%, rgba(2,14,30,0.08) 36%, rgba(2,14,30,0.42) 100%)',
         }}
       />
-      <Progress current={index + 1} total={total} />
-
-      <div
-        style={{
-          position: 'absolute',
-          top: 675,
-          left: 64,
-          right: 64,
-          minHeight: 330,
-          backgroundColor: 'rgba(247,251,255,0.96)',
-          borderTop: `10px solid ${colors.yellow}`,
-          borderBottom: `10px solid ${colors.orange}`,
-          boxShadow: '0 18px 38px rgba(0,0,0,0.42)',
-          display: 'flex',
-          alignItems: 'center',
-          padding: '34px 32px 34px 44px',
-          gap: 28,
-          opacity: 1 - revealProgress,
-          transform: `translateY(${revealProgress * 30}px)`,
-        }}
-      >
-        <div style={{flex: 1}}>
+      {landscape ? (
+        <>
+          <LandscapeProgress
+            current={question.questionNumber}
+            total={totalQuestions}
+            plaque={presentation.progressPlaque}
+          />
           <div
             style={{
-              color: colors.orange,
-              fontSize: 25,
-              fontWeight: 900,
-              textTransform: 'uppercase',
-              marginBottom: 15,
+              position: 'absolute',
+              top: 300,
+              left: 240,
+              width: 1440,
+              height: 275,
+              opacity: 1 - revealProgress,
+              transform: `translateY(${revealProgress * 25}px)`,
             }}
           >
-            Question {index + 1} of {total}
+            <Img
+              src={staticFile(presentation.questionFrame)}
+              style={{position: 'absolute', width: '100%', height: '100%'}}
+            />
+            <div
+              style={{
+                position: 'absolute',
+                left: 185,
+                right: 260,
+                top: 45,
+                bottom: 45,
+                display: 'flex',
+                alignItems: 'center',
+                color: colors.ink,
+                fontSize: question.question.length > 65 ? 37 : 43,
+                lineHeight: 1.15,
+                fontWeight: 900,
+                textAlign: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              {question.question}
+            </div>
+            <div style={{position: 'absolute', right: 76, top: 71}}>
+              <Timer
+                localFrame={frame}
+                countdownStart={timing.countdownStart}
+                revealStart={timing.revealStart}
+                fps={fps}
+              />
+            </div>
           </div>
           <div
             style={{
-              color: colors.ink,
-              fontSize: question.question.length > 105 ? 37 : 42,
-              lineHeight: 1.16,
-              fontWeight: 900,
+              position: 'absolute',
+              left: 70,
+              right: 70,
+              bottom: 24,
+              display: 'grid',
+              gridTemplateColumns: 'repeat(4, 1fr)',
+              gap: 22,
+              opacity: 1 - revealProgress,
+              transform: `translateY(${revealProgress * 35}px)`,
             }}
           >
-            {question.question}
+            {question.choices.map((choice, choiceIndex) => (
+              <LandscapeChoiceCard
+                key={choice.choiceId}
+                choice={choice}
+                letter={String.fromCharCode(65 + choiceIndex)}
+                frame={presentation.answerFrame}
+                badge={
+                  presentation.badges[
+                    (question.questionNumber + choiceIndex) %
+                      presentation.badges.length
+                  ]
+                }
+              />
+            ))}
           </div>
-        </div>
-        <Timer
-          localFrame={frame}
-          countdownStart={timing.countdownStart}
-          revealStart={timing.revealStart}
-          fps={fps}
-        />
-      </div>
-
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 42,
-          left: 70,
-          right: 70,
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: 22,
-          opacity: 1 - revealProgress,
-          transform: `translateY(${revealProgress * 45}px)`,
-        }}
-      >
-        {question.choices.map((choice) => (
-          <ChoiceCard key={choice.choiceId} choice={choice} />
-        ))}
-      </div>
-
-      {frame >= timing.revealStart ? (
-        <AnswerOverlay
-          answer={answer}
-          explanation={question.explanation}
-          revealProgress={revealProgress}
-          explanationProgress={explanationProgress}
-        />
-      ) : null}
+          {frame >= timing.revealStart ? (
+            <LandscapeAnswerOverlay
+              answer={answer}
+              explanation={question.explanation}
+              frame={presentation.explanationFrame}
+              revealProgress={revealProgress}
+              explanationProgress={explanationProgress}
+            />
+          ) : null}
+        </>
+      ) : (
+        <>
+          <Progress current={question.questionNumber} total={totalQuestions} />
+          <div
+            style={{
+              position: 'absolute',
+              top: 675,
+              left: 64,
+              right: 64,
+              minHeight: 330,
+              backgroundColor: 'rgba(247,251,255,0.96)',
+              borderTop: `10px solid ${colors.yellow}`,
+              borderBottom: `10px solid ${colors.orange}`,
+              boxShadow: '0 18px 38px rgba(0,0,0,0.42)',
+              display: 'flex',
+              alignItems: 'center',
+              padding: '34px 32px 34px 44px',
+              gap: 28,
+              opacity: 1 - revealProgress,
+              transform: `translateY(${revealProgress * 30}px)`,
+            }}
+          >
+            <div style={{flex: 1}}>
+              <div
+                style={{
+                  color: colors.orange,
+                  fontSize: 25,
+                  fontWeight: 900,
+                  textTransform: 'uppercase',
+                  marginBottom: 15,
+                }}
+              >
+                Question {question.questionNumber} of {totalQuestions}
+              </div>
+              <div
+                style={{
+                  color: colors.ink,
+                  fontSize: question.question.length > 105 ? 37 : 42,
+                  lineHeight: 1.16,
+                  fontWeight: 900,
+                }}
+              >
+                {question.question}
+              </div>
+            </div>
+            <Timer
+              localFrame={frame}
+              countdownStart={timing.countdownStart}
+              revealStart={timing.revealStart}
+              fps={fps}
+            />
+          </div>
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 42,
+              left: 70,
+              right: 70,
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: 22,
+              opacity: 1 - revealProgress,
+              transform: `translateY(${revealProgress * 45}px)`,
+            }}
+          >
+            {question.choices.map((choice) => (
+              <ChoiceCard key={choice.choiceId} choice={choice} />
+            ))}
+          </div>
+          {frame >= timing.revealStart ? (
+            <AnswerOverlay
+              answer={answer}
+              explanation={question.explanation}
+              revealProgress={revealProgress}
+              explanationProgress={explanationProgress}
+            />
+          ) : null}
+        </>
+      )}
 
       <Sequence from={QUESTION_LEAD_FRAMES} layout="none">
         <Html5Audio src={staticFile(question.questionAudio)} />
@@ -491,10 +785,10 @@ export const QuizVideo: React.FC<{data: QuizVideoData}> = ({data}) => {
       >
         <QuestionScene
           question={question}
-          index={index}
-          total={data.questions.length}
+          totalQuestions={data.totalQuestions}
           background={data.background}
           timerAudio={data.timerAudio}
+          presentation={data.presentation}
         />
       </Sequence>,
     );

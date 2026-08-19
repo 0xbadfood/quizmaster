@@ -6,6 +6,7 @@ export type QuizChoice = {
 
 export type VideoQuestion = {
   questionId: string;
+  questionNumber: number;
   question: string;
   explanation: string;
   correctChoiceId: string;
@@ -14,6 +15,14 @@ export type VideoQuestion = {
   questionAudioSeconds: number;
   explanationAudioSeconds: number;
   choices: QuizChoice[];
+};
+
+export type VideoPresentationAssets = {
+  progressPlaque: string;
+  questionFrame: string;
+  answerFrame: string;
+  explanationFrame: string;
+  badges: string[];
 };
 
 export type QuizVideoData = {
@@ -27,5 +36,7 @@ export type QuizVideoData = {
   fps: number;
   background: string;
   timerAudio: string;
+  presentation: VideoPresentationAssets;
+  totalQuestions: number;
   questions: VideoQuestion[];
 };

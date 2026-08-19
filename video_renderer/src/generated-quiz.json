@@ -9,9 +9,23 @@
   "fps": 30,
   "background": "quiz/background.png",
   "timerAudio": "quiz/timer-five-seconds.mp3",
+  "presentation": {
+    "progressPlaque": "quiz/ui/video_progress_plaque.webp",
+    "questionFrame": "quiz/ui/video_question_frame.webp",
+    "answerFrame": "quiz/ui/video_answer_frame.webp",
+    "explanationFrame": "quiz/ui/video_explanation_frame.webp",
+    "badges": [
+      "quiz/ui/video_badge_purple.webp",
+      "quiz/ui/video_badge_green.webp",
+      "quiz/ui/video_badge_orange.webp",
+      "quiz/ui/video_badge_blue.webp"
+    ]
+  },
+  "totalQuestions": 10,
   "questions": [
     {
       "questionId": "geography_beginner_099",
+      "questionNumber": 1,
       "question": "Which planet is the third planet from the Sun and the only known world to support living life?",
       "explanation": "Earth is our home planet, featuring liquid water oceans and a breathable atmosphere.",
       "correctChoiceId": "choice1",
@@ -44,6 +58,7 @@
     },
     {
       "questionId": "geography_beginner_063",
+      "questionNumber": 2,
       "question": "Which cold ocean completely circles the icy continent of Antarctica at the bottom of Earth?",
       "explanation": "The Southern Ocean (Antarctic Ocean) surrounds Antarctica with freezing water.",
       "correctChoiceId": "choice3",
@@ -76,6 +91,7 @@
     },
     {
       "questionId": "geography_beginner_052",
+      "questionNumber": 3,
       "question": "Which continent is located at the frozen bottom of the Earth and surrounded by the Southern Ocean?",
       "explanation": "Antarctica is the coldest, driest, and most southern continent on Earth.",
       "correctChoiceId": "choice2",
@@ -108,6 +124,7 @@
     },
     {
       "questionId": "geography_beginner_058",
+      "questionNumber": 4,
       "question": "Which continent contains historic nations like France, Germany, Italy, and Spain?",
       "explanation": "Europe is a western continent connected directly to Asia on the same landmass.",
       "correctChoiceId": "choice4",
@@ -140,6 +157,7 @@
     },
     {
       "questionId": "geography_beginner_009",
+      "questionNumber": 5,
       "question": "Which slow-moving mass or river of ice is formed by the accumulation and compaction of snow on mountains?",
       "explanation": "A glacier is a huge mass of ice moving slowly down a slope or valley.",
       "correctChoiceId": "choice1",
@@ -172,6 +190,7 @@
     },
     {
       "questionId": "geography_beginner_025",
+      "questionNumber": 6,
       "question": "Which fan-shaped landform is created at the mouth of a river where sediment and soil are deposited?",
       "explanation": "A river delta is a triangular area of wetland created where rivers deposit mud and soil.",
       "correctChoiceId": "choice2",
@@ -204,6 +223,7 @@
     },
     {
       "questionId": "geography_beginner_027",
+      "questionNumber": 7,
       "question": "Which man-made waterway is built to allow boats and ships to travel inland or connect oceans?",
       "explanation": "A canal is an artificial channel constructed for navigation, irrigation, or drainage.",
       "correctChoiceId": "choice4",
@@ -236,6 +256,7 @@
     },
     {
       "questionId": "geography_beginner_038",
+      "questionNumber": 8,
       "question": "Which geological formation consists of flat-topped, steep-sided isolated hills, smaller than a plateau?",
       "explanation": "A mesa is an isolated flat-topped hill with steep sides, common in arid landscapes.",
       "correctChoiceId": "choice2",
@@ -268,6 +289,7 @@
     },
     {
       "questionId": "geography_beginner_129",
+      "questionNumber": 9,
       "question": "Which tool measures air temperature to tell if it is hot or cold outside?",
       "explanation": "A thermometer measures warmth or chilliness in degrees Celsius or Fahrenheit.",
       "correctChoiceId": "choice1",
@@ -300,6 +322,7 @@
     },
     {
       "questionId": "geography_beginner_134",
+      "questionNumber": 10,
       "question": "Which process turns floating water vapor gas back into liquid droplets to form puffy sky clouds?",
       "explanation": "Condensation occurs when invisible water vapor cools into visible liquid droplets.",
       "correctChoiceId": "choice3",

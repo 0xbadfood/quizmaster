@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "prepare:geography": "python3 ../scripts/prepare_remotion_quiz.py --category geography --difficulty beginner --number 1",
+    "prepare:geography": "python3 ../scripts/prepare_remotion_quiz.py --category geography --difficulty beginner --number 1 --orientation portrait --questions 1-10",
     "studio": "remotion studio src/index.ts",
-    "render:preview": "remotion render src/index.ts QuizPrototype output/geography-quiz-1-preview.mp4 --codec=h264 --crf=20 --scale=0.5 --concurrency=4",
-    "render": "remotion render src/index.ts QuizPrototype output/geography-quiz-1.mp4 --codec=h264 --crf=18 --concurrency=4",
+    "render:preview": "remotion render src/index.ts QuizVideo output/geography-quiz-1-preview.mp4 --codec=h264 --crf=20 --scale=0.5 --concurrency=4",
+    "render": "remotion render src/index.ts QuizVideo output/geography-quiz-1.mp4 --codec=h264 --crf=18 --concurrency=4",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
