@@ -26,6 +26,6 @@ export type QuizVideoData = {
   height: number;
   fps: number;
   background: string;
-  correctSfx: string;
+  timerAudio: string;
   questions: VideoQuestion[];
 };

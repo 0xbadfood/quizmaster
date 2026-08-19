@@ -23,6 +23,7 @@ data/assets/**
 # Local inputs and generated reference media
 /*.wav
 /*.png
+/freesound_community-timer-with-chime-101253.mp3
 /flora.json
 
 # Previous standalone Flutter checkout; the maintained app lives in /app.

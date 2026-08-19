@@ -2,8 +2,9 @@
 
 This prototype renders one published 10-question quiz bundle as a vertical video.
 It derives timing from the audited narration durations, shows a fixed five-second
-decision timer, reveals only the correct answer, and exposes the full category
-background between questions. There is intentionally no end screen.
+audible decision timer, replaces the question with a centered correct-answer panel,
+and exposes the full category background between questions. There is intentionally
+no end screen.
 
 ```bash
 cd video_renderer

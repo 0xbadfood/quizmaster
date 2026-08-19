@@ -173,28 +173,19 @@ const CheckMark: React.FC = () => (
 
 const ChoiceCard: React.FC<{
   choice: QuizChoice;
-  revealed: boolean;
-  correct: boolean;
-}> = ({choice, revealed, correct}) => {
-  const emphasized = revealed && correct;
+}> = ({choice}) => {
   return (
     <div
       style={{
-        height: 420,
+        height: 354,
         borderRadius: 8,
         overflow: 'hidden',
         backgroundColor: colors.paper,
-        border: emphasized
-          ? `10px solid ${colors.green}`
-          : '5px solid rgba(255,255,255,0.92)',
-        boxShadow: emphasized
-          ? '0 0 0 8px rgba(255,202,58,0.9), 0 16px 32px rgba(0,0,0,0.45)'
-          : '0 12px 28px rgba(0,0,0,0.38)',
-        transform: emphasized ? 'scale(1.035)' : 'scale(1)',
-        position: 'relative',
+        border: '4px solid rgba(255,255,255,0.94)',
+        boxShadow: '0 12px 28px rgba(0,0,0,0.4)',
       }}
     >
-      <div style={{height: 330, padding: 12, backgroundColor: colors.white}}>
+      <div style={{height: 290, backgroundColor: colors.white}}>
         <Img
           src={staticFile(choice.image)}
           style={{width: '100%', height: '100%', objectFit: 'contain'}}
@@ -202,14 +193,14 @@ const ChoiceCard: React.FC<{
       </div>
       <div
         style={{
-          height: 90,
+          height: 64,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: '0 18px',
-          backgroundColor: emphasized ? '#dff6e5' : colors.paper,
-          color: emphasized ? colors.greenDark : colors.ink,
-          fontSize: choice.label.length > 18 ? 29 : 34,
+          padding: '0 14px 3px',
+          backgroundColor: colors.paper,
+          color: colors.ink,
+          fontSize: choice.label.length > 18 ? 25 : 30,
           lineHeight: 1.08,
           fontWeight: 900,
           textAlign: 'center',
@@ -217,31 +208,126 @@ const ChoiceCard: React.FC<{
       >
         {choice.label}
       </div>
-      {revealed && !correct ? (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            backgroundColor: 'rgba(6,26,50,0.63)',
-          }}
-        />
-      ) : null}
     </div>
   );
 };
+
+const AnswerOverlay: React.FC<{
+  answer: QuizChoice;
+  explanation: string;
+  revealProgress: number;
+  explanationProgress: number;
+}> = ({answer, explanation, revealProgress, explanationProgress}) => (
+  <div
+    style={{
+      position: 'absolute',
+      top: 675,
+      left: 70,
+      right: 70,
+      minHeight: 1090,
+      borderRadius: 8,
+      overflow: 'hidden',
+      backgroundColor: 'rgba(247,251,255,0.97)',
+      borderTop: `12px solid ${colors.green}`,
+      borderBottom: `12px solid ${colors.yellow}`,
+      boxShadow: '0 20px 50px rgba(0,0,0,0.52)',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      padding: '38px 48px 44px',
+      opacity: revealProgress,
+      transform: `translateY(${(1 - revealProgress) * 70}px) scale(${0.96 + revealProgress * 0.04})`,
+    }}
+  >
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 22,
+        color: colors.greenDark,
+        fontSize: 31,
+        fontWeight: 900,
+        textTransform: 'uppercase',
+      }}
+    >
+      <div
+        style={{
+          width: 66,
+          height: 66,
+          borderRadius: '50%',
+          backgroundColor: colors.green,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <CheckMark />
+      </div>
+      Correct answer
+    </div>
+    <div
+      style={{
+        width: 520,
+        height: 520,
+        marginTop: 30,
+        backgroundColor: colors.white,
+        border: `8px solid ${colors.green}`,
+        borderRadius: 8,
+        overflow: 'hidden',
+        boxShadow: '0 14px 30px rgba(0,0,0,0.25)',
+      }}
+    >
+      <Img
+        src={staticFile(answer.image)}
+        style={{width: '100%', height: '100%', objectFit: 'contain'}}
+      />
+    </div>
+    <div
+      style={{
+        color: colors.ink,
+        fontSize: answer.label.length > 22 ? 39 : 48,
+        lineHeight: 1.08,
+        fontWeight: 900,
+        textAlign: 'center',
+        marginTop: 24,
+      }}
+    >
+      {answer.label}
+    </div>
+    <div
+      style={{
+        width: '100%',
+        height: 3,
+        backgroundColor: '#d5e0e8',
+        margin: '28px 0 25px',
+      }}
+    />
+    <div
+      style={{
+        color: colors.ink,
+        fontSize: explanation.length > 150 ? 31 : 36,
+        lineHeight: 1.22,
+        fontWeight: 800,
+        textAlign: 'center',
+        opacity: explanationProgress,
+        transform: `translateY(${(1 - explanationProgress) * 24}px)`,
+      }}
+    >
+      {explanation}
+    </div>
+  </div>
+);
 
 const QuestionScene: React.FC<{
   question: VideoQuestion;
   index: number;
   total: number;
   background: string;
-  correctSfx: string;
-}> = ({question, index, total, background, correctSfx}) => {
+  timerAudio: string;
+}> = ({question, index, total, background, timerAudio}) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
   const timing = questionTiming(question, fps);
-  const revealed = frame >= timing.revealStart;
-  const explanationVisible = frame >= timing.explanationStart;
   const entrance = spring({frame, fps, config: {damping: 18, stiffness: 120}});
   const exitOpacity = interpolate(
     frame,
@@ -249,11 +335,22 @@ const QuestionScene: React.FC<{
     [1, 0],
     {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'},
   );
-  const explanationEntrance = spring({
+  const revealProgress = spring({
+    frame: Math.max(0, frame - timing.revealStart),
+    fps,
+    config: {damping: 18, stiffness: 120},
+  });
+  const explanationProgress = spring({
     frame: Math.max(0, frame - timing.explanationStart),
     fps,
     config: {damping: 18, stiffness: 110},
   });
+  const answer = question.choices.find(
+    (choice) => choice.choiceId === question.correctChoiceId,
+  );
+  if (!answer) {
+    throw new Error(`Correct answer is missing for ${question.questionId}`);
+  }
 
   return (
     <AbsoluteFill
@@ -263,24 +360,32 @@ const QuestionScene: React.FC<{
         fontFamily: 'DejaVu Sans, sans-serif',
       }}
     >
-      <Background source={background} dim={0.52} />
+      <Background source={background} />
+      <AbsoluteFill
+        style={{
+          background:
+            'linear-gradient(to bottom, rgba(2,14,30,0.02) 0%, rgba(2,14,30,0.08) 36%, rgba(2,14,30,0.42) 100%)',
+        }}
+      />
       <Progress current={index + 1} total={total} />
 
       <div
         style={{
           position: 'absolute',
-          top: 170,
+          top: 675,
           left: 64,
           right: 64,
-          minHeight: 272,
+          minHeight: 330,
           backgroundColor: 'rgba(247,251,255,0.96)',
           borderTop: `10px solid ${colors.yellow}`,
           borderBottom: `10px solid ${colors.orange}`,
           boxShadow: '0 18px 38px rgba(0,0,0,0.42)',
           display: 'flex',
           alignItems: 'center',
-          padding: '34px 34px 34px 44px',
+          padding: '34px 32px 34px 44px',
           gap: 28,
+          opacity: 1 - revealProgress,
+          transform: `translateY(${revealProgress * 30}px)`,
         }}
       >
         <div style={{flex: 1}}>
@@ -298,7 +403,7 @@ const QuestionScene: React.FC<{
           <div
             style={{
               color: colors.ink,
-              fontSize: question.question.length > 105 ? 38 : 43,
+              fontSize: question.question.length > 105 ? 37 : 42,
               lineHeight: 1.16,
               fontWeight: 900,
             }}
@@ -317,70 +422,35 @@ const QuestionScene: React.FC<{
       <div
         style={{
           position: 'absolute',
-          top: 495,
+          bottom: 42,
           left: 70,
           right: 70,
           display: 'grid',
           gridTemplateColumns: '1fr 1fr',
-          gap: 30,
+          gap: 22,
+          opacity: 1 - revealProgress,
+          transform: `translateY(${revealProgress * 45}px)`,
         }}
       >
         {question.choices.map((choice) => (
-          <ChoiceCard
-            key={choice.choiceId}
-            choice={choice}
-            revealed={revealed}
-            correct={choice.choiceId === question.correctChoiceId}
-          />
+          <ChoiceCard key={choice.choiceId} choice={choice} />
         ))}
       </div>
 
-      {explanationVisible ? (
-        <div
-          style={{
-            position: 'absolute',
-            left: 70,
-            right: 70,
-            bottom: 55,
-            minHeight: 235,
-            backgroundColor: 'rgba(255,255,255,0.97)',
-            borderLeft: `14px solid ${colors.green}`,
-            borderRadius: 8,
-            boxShadow: '0 16px 38px rgba(0,0,0,0.45)',
-            padding: '32px 38px',
-            transform: `translateY(${(1 - explanationEntrance) * 80}px)`,
-            opacity: explanationEntrance,
-          }}
-        >
-          <div
-            style={{
-              color: colors.greenDark,
-              fontSize: 25,
-              fontWeight: 900,
-              textTransform: 'uppercase',
-              marginBottom: 10,
-            }}
-          >
-            Answer explained
-          </div>
-          <div
-            style={{
-              color: colors.ink,
-              fontSize: question.explanation.length > 150 ? 32 : 37,
-              lineHeight: 1.2,
-              fontWeight: 800,
-            }}
-          >
-            {question.explanation}
-          </div>
-        </div>
+      {frame >= timing.revealStart ? (
+        <AnswerOverlay
+          answer={answer}
+          explanation={question.explanation}
+          revealProgress={revealProgress}
+          explanationProgress={explanationProgress}
+        />
       ) : null}
 
       <Sequence from={QUESTION_LEAD_FRAMES} layout="none">
         <Html5Audio src={staticFile(question.questionAudio)} />
       </Sequence>
-      <Sequence from={timing.revealStart} layout="none">
-        <Html5Audio src={staticFile(correctSfx)} volume={0.82} />
+      <Sequence from={timing.countdownStart} layout="none">
+        <Html5Audio src={staticFile(timerAudio)} volume={0.82} />
       </Sequence>
       <Sequence from={timing.explanationStart} layout="none">
         <Html5Audio src={staticFile(question.explanationAudio)} />
@@ -424,7 +494,7 @@ export const QuizVideo: React.FC<{data: QuizVideoData}> = ({data}) => {
           index={index}
           total={data.questions.length}
           background={data.background}
-          correctSfx={data.correctSfx}
+          timerAudio={data.timerAudio}
         />
       </Sequence>,
     );

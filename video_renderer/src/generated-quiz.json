@@ -8,7 +8,7 @@
   "height": 1920,
   "fps": 30,
   "background": "quiz/background.png",
-  "correctSfx": "quiz/correct.mp3",
+  "timerAudio": "quiz/timer-five-seconds.mp3",
   "questions": [
     {
       "questionId": "geography_beginner_099",

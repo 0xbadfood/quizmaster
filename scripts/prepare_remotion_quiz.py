@@ -52,7 +52,10 @@ def prepare(category: str, difficulty: str, number: int) -> Path:
 
     background_source = content / category_document["presentation"]["runtime_background"]
     _copy(background_source, "quiz/background.png")
-    _copy(ROOT / "visual_quiz_qwen/global/audio/correct_chime.mp3", "quiz/correct.mp3")
+    _copy(
+        RENDERER_ROOT / "assets/timer-five-seconds.mp3",
+        "quiz/timer-five-seconds.mp3",
+    )
 
     copied_answers: dict[str, str] = {}
     questions = []
@@ -119,7 +122,7 @@ def prepare(category: str, difficulty: str, number: int) -> Path:
         "height": 1920,
         "fps": 30,
         "background": "quiz/background.png",
-        "correctSfx": "quiz/correct.mp3",
+        "timerAudio": "quiz/timer-five-seconds.mp3",
         "questions": questions,
     }
     output = RENDERER_ROOT / "src/generated-quiz.json"
