@@ -10,6 +10,7 @@ from quiz_harness.image_inventory import (
     build_category_image_spec,
     build_global_image_spec,
     build_progress_style,
+    build_video_presentation_inventory,
 )
 from quiz_harness.openai_images import (
     OpenAIImageAssetSpec,
@@ -74,8 +75,12 @@ def test_category_spec_has_background_selector_and_twenty_tiles(tmp_path: Path) 
         display_title="ANIMAL QUIZ",
         background_ready=True,
     )
-    assert len(document.assets) == 22
+    assert len(document.assets) == 23
     assert sum(asset.role == "quiz_tile" for asset in document.assets) == 20
+    landscape = next(
+        asset for asset in document.assets if asset.role == "video_background_landscape"
+    )
+    assert (landscape.output_width, landscape.output_height) == (1920, 1080)
     first = next(asset for asset in document.assets if asset.asset_id == "tile_beginner_01")
     assert first.exact_text == ["ANIMAL QUIZ 1", "BEGINNER"]
     assert "aged 3 to 5" in first.prompt
@@ -87,14 +92,37 @@ def test_category_spec_has_background_selector_and_twenty_tiles(tmp_path: Path) 
     assert "aged 8 to 10" in intermediate.prompt
 
 
-def test_global_spec_has_only_shared_image_controls() -> None:
+def test_global_spec_has_shared_controls_and_video_frames() -> None:
     document = build_global_image_spec()
-    assert len(document.assets) == 3
-    assert [asset.asset_id for asset in document.assets] == [
+    assert len(document.assets) == 11
+    assert [asset.asset_id for asset in document.assets[:3]] == [
         "settings_button",
         "speaker_on_button",
         "speaker_muted_button",
     ]
+    assert {asset.asset_id for asset in document.assets[3:]} == {
+        "video_progress_plaque",
+        "video_question_frame",
+        "video_answer_frame",
+        "video_explanation_frame",
+        "video_badge_purple",
+        "video_badge_green",
+        "video_badge_orange",
+        "video_badge_blue",
+    }
+
+
+def test_video_inventory_keeps_letters_and_progress_dynamic() -> None:
+    inventory = build_video_presentation_inventory()
+
+    assert inventory["category_assets"]["landscape_background"]["size"] == [
+        1920,
+        1080,
+    ]
+    assert inventory["dynamic_content"]["progress_text"] == (
+        "QUESTION {current} OF {total}"
+    )
+    assert inventory["dynamic_content"]["answer_badge_text"] == ["A", "B", "C", "D"]
 
 
 def test_image_spec_supports_full_category_answer_inventory() -> None:

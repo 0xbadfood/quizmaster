@@ -159,6 +159,19 @@ def _required_category_asset_id(
     return matches[0]
 
 
+def _optional_category_asset_id(
+    category_assets: dict[str, dict[str, Any]], *, role: str
+) -> str | None:
+    matches = [
+        asset_id
+        for asset_id, asset in category_assets.items()
+        if asset.get("role") == role
+    ]
+    if len(matches) > 1:
+        raise ValueError(f"category {role} asset is ambiguous")
+    return matches[0] if matches else None
+
+
 def _build_payload(
     *,
     staging: Path,
@@ -191,8 +204,11 @@ def _build_payload(
 
     category_assets = {item["asset_id"]: item for item in category_spec["assets"]}
     global_assets = {item["asset_id"]: item for item in global_spec["assets"]}
-    for asset_id in category_assets:
-        if asset_id not in category_manifest.get("assets", {}):
+    for asset_id, asset in category_assets.items():
+        if (
+            asset_id not in category_manifest.get("assets", {})
+            and asset.get("role") != "video_background_landscape"
+        ):
             raise ValueError(f"category asset has no manifest record: {asset_id}")
     for asset_id in global_assets:
         if asset_id not in global_manifest.get("assets", {}):
@@ -204,9 +220,21 @@ def _build_payload(
     selector_id = _required_category_asset_id(
         category_assets, role="category_selector"
     )
+    landscape_background_id = _optional_category_asset_id(
+        category_assets, role="video_background_landscape"
+    )
+    if landscape_background_id and (
+        landscape_background_id not in category_manifest.get("assets", {})
+        or not (category_root / category_assets[landscape_background_id]["file"]).is_file()
+    ):
+        landscape_background_id = None
 
     presentation_files: dict[str, str] = {}
-    for asset_id in (background_id, selector_id):
+    for asset_id in (
+        background_id,
+        selector_id,
+        *([landscape_background_id] if landscape_background_id else []),
+    ):
         spec = category_assets[asset_id]
         suffix = Path(spec["file"]).suffix
         target = f"assets/category/{asset_id}{suffix}"
@@ -220,6 +248,12 @@ def _build_payload(
         _copy(global_root / spec["file"], staging / target)
         global_files[asset_id] = target
     _write_json(staging / "runtime/progress-style.json", progress_style)
+    video_inventory_source = global_root / "video-presentation-inventory.json"
+    if video_inventory_source.is_file():
+        _copy(
+            video_inventory_source,
+            staging / "runtime/video-presentation-inventory.json",
+        )
 
     question_audio: dict[str, dict[str, str]] = {}
     if has_audio:
@@ -341,10 +375,51 @@ def _build_payload(
         },
         "presentation": {
             "runtime_background": presentation_files[background_id],
+            **(
+                {
+                    "video_background_landscape": presentation_files[
+                        landscape_background_id
+                    ]
+                }
+                if landscape_background_id
+                else {}
+            ),
             "settings_button": global_files["settings_button"],
             "speaker_on_button": global_files["speaker_on_button"],
             "speaker_muted_button": global_files["speaker_muted_button"],
             "progress_style": "runtime/progress-style.json",
+            **(
+                {
+                    "video_presentation_inventory": (
+                        "runtime/video-presentation-inventory.json"
+                    ),
+                    "video_progress_plaque": global_files["video_progress_plaque"],
+                    "video_question_frame": global_files["video_question_frame"],
+                    "video_answer_frame": global_files["video_answer_frame"],
+                    "video_explanation_frame": global_files[
+                        "video_explanation_frame"
+                    ],
+                    "video_badges": {
+                        color: global_files[f"video_badge_{color}"]
+                        for color in ("purple", "green", "orange", "blue")
+                    },
+                }
+                if all(
+                    asset_id in global_files
+                    for asset_id in (
+                        "video_progress_plaque",
+                        "video_question_frame",
+                        "video_answer_frame",
+                        "video_explanation_frame",
+                        "video_badge_purple",
+                        "video_badge_green",
+                        "video_badge_orange",
+                        "video_badge_blue",
+                    )
+                )
+                and video_inventory_source.is_file()
+                else {}
+            ),
         },
         "difficulties": difficulties,
         "quizzes": sorted(

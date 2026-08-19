@@ -188,9 +188,24 @@ class StudioPublishStore:
             spec_assets = []
         if not isinstance(manifest_assets, dict):
             manifest_assets = {}
+        required_spec_assets = [
+            asset
+            for asset in spec_assets
+            if isinstance(asset, dict)
+            and asset.get("role") != "video_background_landscape"
+        ]
+        landscape_spec = next(
+            (
+                asset
+                for asset in spec_assets
+                if isinstance(asset, dict)
+                and asset.get("role") == "video_background_landscape"
+            ),
+            None,
+        )
         category_ready = 0
         pending_review = 0
-        for asset in spec_assets:
+        for asset in required_spec_assets:
             if not isinstance(asset, dict):
                 continue
             asset_id = str(asset.get("asset_id") or "")
@@ -201,14 +216,23 @@ class StudioPublishStore:
                 pending_review += record.get("status") == "generated_pending_review"
         if pending_review:
             warnings.append(f"{pending_review} category visuals are awaiting review")
+        if isinstance(landscape_spec, dict):
+            landscape_file = root / str(landscape_spec.get("file") or "")
+            if not landscape_file.is_file():
+                warnings.append(
+                    "Optional landscape video background has not been generated"
+                )
         gates.append(
             _gate(
                 "category_visuals",
                 "Category visuals",
                 current=category_ready,
-                target=len(spec_assets),
+                target=len(required_spec_assets),
                 detail=f"{pending_review} awaiting review",
-                ready=bool(spec_assets) and category_ready == len(spec_assets),
+                ready=(
+                    bool(required_spec_assets)
+                    and category_ready == len(required_spec_assets)
+                ),
             )
         )
 
@@ -248,15 +272,28 @@ class StudioPublishStore:
             for asset in global_assets
         )
         progress_ready = (global_root / "progress-style.json").is_file()
-        global_target = len(global_assets) + 1
+        has_video_assets = any(
+            isinstance(asset, dict)
+            and str(asset.get("role") or "").startswith("video_")
+            for asset in global_assets
+        )
+        video_inventory_ready = (
+            global_root / "video-presentation-inventory.json"
+        ).is_file()
+        global_target = len(global_assets) + 1 + int(has_video_assets)
+        global_current = (
+            global_ready
+            + int(progress_ready)
+            + int(has_video_assets and video_inventory_ready)
+        )
         gates.append(
             _gate(
                 "presentation",
                 "Presentation assets",
-                current=global_ready + int(progress_ready),
+                current=global_current,
                 target=global_target,
                 detail="Shared controls and progress style",
-                ready=bool(global_assets) and global_ready + int(progress_ready) == global_target,
+                ready=bool(global_assets) and global_current == global_target,
             )
         )
 

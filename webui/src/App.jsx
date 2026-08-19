@@ -546,7 +546,8 @@ function QuizSetSelectionDialog({ category, providers, summary, onClose, onQueue
   </form></section></div>
 }
 
-const VISUAL_ROLE_LABELS = { runtime_background: 'Background', category_selector: 'Category selector', quiz_tile: 'Quiz tile', answer_image: 'Answer image' }
+const BACKGROUND_VISUAL_ROLES = ['runtime_background', 'video_background_landscape']
+const VISUAL_ROLE_LABELS = { runtime_background: 'Portrait background', video_background_landscape: 'Landscape video background', category_selector: 'Category selector', quiz_tile: 'Quiz tile', answer_image: 'Answer image' }
 
 function VisualsWorkspace({ category, providers, onStage, onJob, refreshToken, onCategoryRefresh }) {
   const [payload, setPayload] = useState(null)
@@ -574,7 +575,7 @@ function VisualsWorkspace({ category, providers, onStage, onJob, refreshToken, o
   useEffect(() => { setChecked([]) }, [category?.slug])
   const assets = payload?.assets || []
   const visible = assets.filter((asset) => {
-    const roleMatch = filters.role === 'all' || (filters.role === 'category' ? ['runtime_background', 'category_selector'].includes(asset.role) : filters.role === 'tiles' ? asset.role === 'quiz_tile' : asset.role === 'answer_image')
+    const roleMatch = filters.role === 'all' || (filters.role === 'category' ? [...BACKGROUND_VISUAL_ROLES, 'category_selector'].includes(asset.role) : filters.role === 'tiles' ? asset.role === 'quiz_tile' : asset.role === 'answer_image')
     const statusMatch = filters.status === 'all' || asset.status === filters.status
     const text = `${asset.asset_id} ${asset.label || ''} ${asset.visual_summary || ''}`.toLowerCase()
     return roleMatch && statusMatch && text.includes(filters.q.trim().toLowerCase())
@@ -599,14 +600,15 @@ function VisualsWorkspace({ category, providers, onStage, onJob, refreshToken, o
         <div><p className="kicker">VISUAL LIBRARY</p><h1>{category.name}</h1></div>
         <div className="question-actions">
           {blockedReason && <span className="toolbar-gate"><CircleAlert size={14} />Prerequisites required</span>}
-          <label className={`button secondary upload-button ${blockedReason ? 'disabled' : ''}`}><Upload size={15} />Background<input disabled={Boolean(blockedReason)} type="file" accept="image/*" onChange={uploaded} /></label>
+          <label className={`button secondary upload-button ${blockedReason ? 'disabled' : ''}`}><Upload size={15} />Portrait<input disabled={Boolean(blockedReason)} type="file" accept="image/*" onChange={uploaded} /></label>
+          <button className="button secondary" disabled={Boolean(blockedReason)} onClick={() => setDialog('landscape')}><Image size={15} />Landscape</button>
           <button className="button secondary" disabled={Boolean(blockedReason)} onClick={() => setDialog('plan')}><Sparkles size={15} />Plan prompts</button>
           <button className="button primary" disabled={!checked.length} onClick={() => setDialog('generate')}><Image size={15} />Generate {checked.length || ''}</button>
         </div>
       </div>
       {summary && <div className="bank-summary">
-        <BankStat value={summary.total} label="Required assets" detail={`${summary.roles.quiz_tile || 0} tiles · ${summary.roles.answer_image || 0} answers`} tone="blue" />
-        <BankStat value={summary.generated} label="Generated" detail={`${summary.total - summary.generated} remaining`} tone="violet" />
+        <BankStat value={summary.required_total ?? summary.total} label="Required assets" detail={`${summary.roles.quiz_tile || 0} tiles · ${summary.roles.answer_image || 0} answers`} tone="blue" />
+        <BankStat value={summary.required_generated ?? summary.generated} label="Generated" detail={`${(summary.required_total ?? summary.total) - (summary.required_generated ?? summary.generated)} required remaining · ${summary.optional_generated || 0}/${summary.optional_total || 0} optional`} tone="violet" />
         <BankStat value={summary.approved} label="Approved" detail={`${summary.pending_review} awaiting review`} tone="green" />
         <BankStat value={summary.attention} label="Attention" detail={`${summary.unplanned} prompts unplanned`} tone="amber" />
       </div>}
@@ -626,7 +628,7 @@ function VisualsWorkspace({ category, providers, onStage, onJob, refreshToken, o
         <div className="visual-grid">
           {loading && [...Array(12)].map((_, index) => <div className="visual-card-skeleton" key={index} />)}
           {!loading && visible.map((asset) => <button className={`visual-card ${selectedId === asset.asset_id ? 'selected' : ''}`} onClick={() => setSelectedId(asset.asset_id)} key={asset.asset_id}>
-            <span className="visual-thumb">{asset.image_url ? <img src={`${asset.image_url}?r=${refreshToken}`} alt="" /> : <Image size={28} />}{asset.role !== 'runtime_background' && <input type="checkbox" aria-label={`Select ${asset.asset_id}`} checked={checked.includes(asset.asset_id)} onClick={(event) => event.stopPropagation()} onChange={() => toggle(asset.asset_id)} />}</span>
+            <span className="visual-thumb">{asset.image_url ? <img src={`${asset.image_url}?r=${refreshToken}`} alt="" /> : <Image size={28} />}{!BACKGROUND_VISUAL_ROLES.includes(asset.role) && <input type="checkbox" aria-label={`Select ${asset.asset_id}`} checked={checked.includes(asset.asset_id)} onClick={(event) => event.stopPropagation()} onChange={() => toggle(asset.asset_id)} />}</span>
             <span className="visual-card-copy"><strong>{asset.label || asset.asset_id.replaceAll('_', ' ')}</strong><small>{VISUAL_ROLE_LABELS[asset.role]}</small></span>
             <StatusBadge status={asset.status === 'generated_pending_review' ? 'attention' : asset.status} label={asset.status === 'generated_pending_review' ? 'Awaiting review' : undefined} />
           </button>)}
@@ -637,6 +639,7 @@ function VisualsWorkspace({ category, providers, onStage, onJob, refreshToken, o
     </section>
     <VisualInspector category={category} asset={selected} providers={providers} onChanged={async () => { await loadVisuals(selectedId); await onCategoryRefresh() }} onJob={onJob} onGenerate={() => { setChecked(selected ? [selected.asset_id] : []); setDialog('generate') }} />
     {dialog === 'plan' && <VisualPromptDialog category={category} providers={providers} current={payload?.prompt_plan} onClose={() => setDialog('')} onQueued={(job) => { setDialog(''); onJob(job) }} />}
+    {dialog === 'landscape' && <LandscapeBackgroundDialog category={category} providers={providers} asset={assets.find((item) => item.role === 'video_background_landscape')} onClose={() => setDialog('')} onQueued={(job) => { setDialog(''); onJob(job) }} />}
     {dialog === 'generate' && <VisualGenerateDialog category={category} providers={providers} assets={selectedAssets} onClose={() => setDialog('')} onQueued={(job) => { setDialog(''); setChecked([]); onJob(job) }} />}
   </div>
 }
@@ -647,7 +650,7 @@ function VisualInspector({ category, asset, onChanged, onGenerate }) {
   const [notice, setNotice] = useState('')
   useEffect(() => { setPrompt(asset?.prompt || ''); setNotice('') }, [asset])
   if (!asset) return <aside className="visual-inspector"><div className="inspector-title"><div><Image size={16} /><strong>Visual details</strong></div></div><EmptyState icon={Image} title="Select a visual" detail="Preview, prompt, and review controls appear here." /></aside>
-  const uploadOnly = asset.role === 'runtime_background'
+  const uploadOnly = BACKGROUND_VISUAL_ROLES.includes(asset.role)
   async function savePrompt() { setBusy(true); setNotice(''); try { await patch(`/api/studio/categories/${category.slug}/visuals/${asset.asset_id}/prompt`, { prompt }); setNotice('Prompt saved'); await onChanged() } catch (error) { setNotice(error.message) } finally { setBusy(false) } }
   async function review(status) { setBusy(true); setNotice(''); try { await post(`/api/studio/categories/${category.slug}/visuals/${asset.asset_id}/review`, { status }); setNotice(status === 'approved' ? 'Visual approved' : 'Visual rejected'); await onChanged() } catch (error) { setNotice(error.message) } finally { setBusy(false) } }
   return <aside className="visual-inspector">
@@ -663,6 +666,43 @@ function VisualInspector({ category, asset, onChanged, onGenerate }) {
       {notice && <div className={notice.includes('approved') || notice.includes('saved') ? 'form-notice success inspector-notice' : 'form-notice inspector-notice'}>{notice}</div>}
     </div>
   </aside>
+}
+
+function LandscapeBackgroundDialog({ category, providers, asset, onClose, onQueued }) {
+  const planners = providers.filter((provider) => provider.enabled && provider.provider_type === 'openai_compatible_llm')
+  const imageProviders = providers.filter((provider) => provider.enabled && ['openai_images', 'imagestudio'].includes(provider.provider_type))
+  const planner = planners[0]
+  const imageProvider = imageProviders.find((provider) => provider.provider_type === 'openai_images') || imageProviders[0]
+  const [form, setForm] = useState({
+    planner_provider_id: planner?.id || '',
+    planner_model: planner?.default_model || planner?.discovered_models?.[0] || '',
+    image_provider_id: imageProvider?.id || '',
+    image_model: imageProvider?.default_model || imageProvider?.discovered_models?.[0] || '',
+    quality: 'medium',
+    guidance: '',
+    seed: 20260805,
+    refresh_plan: false,
+    force: Boolean(asset?.image_url),
+  })
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const selectedPlanner = planners.find((item) => item.id === form.planner_provider_id)
+  const selectedImageProvider = imageProviders.find((item) => item.id === form.image_provider_id)
+  function choosePlanner(id) { const item = planners.find((candidate) => candidate.id === id); setForm({ ...form, planner_provider_id: id, planner_model: item?.default_model || item?.discovered_models?.[0] || '' }) }
+  function chooseImageProvider(id) { const item = imageProviders.find((candidate) => candidate.id === id); setForm({ ...form, image_provider_id: id, image_model: item?.default_model || item?.discovered_models?.[0] || '' }) }
+  async function submit(event) {
+    event.preventDefault(); setBusy(true); setError('')
+    try { onQueued(await post(`/api/studio/categories/${category.slug}/visuals/landscape-background`, { ...form, seed: Number(form.seed) })) } catch (requestError) { setError(requestError.message); setBusy(false) }
+  }
+  return <div className="dialog-backdrop"><section className="dialog visual-dialog" role="dialog" aria-modal="true"><header><div><p className="kicker">VIDEO BACKGROUND</p><h2>{asset?.image_url ? 'Regenerate landscape background' : 'Generate landscape background'}</h2></div><button className="icon-button quiet" title="Close" onClick={onClose}><X size={18} /></button></header><form onSubmit={submit}>
+    <div className="dialog-grid"><label>Planner connection<select value={form.planner_provider_id} onChange={(event) => choosePlanner(event.target.value)}><option value="" disabled>Select a planner</option>{planners.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label>Planner model<input list="landscape-planner-models" value={form.planner_model} onChange={(event) => setForm({ ...form, planner_model: event.target.value })} /><datalist id="landscape-planner-models">{selectedPlanner?.discovered_models.map((model) => <option value={model} key={model} />)}</datalist></label></div>
+    <div className="dialog-grid"><label>Image provider<select value={form.image_provider_id} onChange={(event) => chooseImageProvider(event.target.value)}><option value="" disabled>Select an image provider</option>{imageProviders.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label>Image model<input list="landscape-image-models" value={form.image_model} onChange={(event) => setForm({ ...form, image_model: event.target.value })} /><datalist id="landscape-image-models">{selectedImageProvider?.discovered_models.map((model) => <option value={model} key={model} />)}</datalist></label></div>
+    {selectedImageProvider?.provider_type === 'openai_images' && <label>Quality<select value={form.quality} onChange={(event) => setForm({ ...form, quality: event.target.value })}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="auto">Auto</option></select></label>}
+    <label>Additional direction<textarea rows="4" placeholder="Optional category-specific art direction" value={form.guidance} onChange={(event) => setForm({ ...form, guidance: event.target.value })} /></label>
+    <div className="dialog-grid"><label>Seed<input type="number" min="0" max="2147483647" value={form.seed} onChange={(event) => setForm({ ...form, seed: event.target.value })} /></label><div className="dialog-checks"><label className="check-field"><input type="checkbox" checked={form.refresh_plan} onChange={(event) => setForm({ ...form, refresh_plan: event.target.checked })} />Create a new prompt plan</label><label className="check-field"><input type="checkbox" checked={form.force} onChange={(event) => setForm({ ...form, force: event.target.checked })} />Render a new image</label></div></div>
+    {error && <div className="inline-error"><CircleAlert size={15} />{error}</div>}
+    <div className="dialog-actions"><button type="button" className="button secondary" onClick={onClose}>Cancel</button><button className="button primary" disabled={busy || !form.planner_model || !form.image_model}>{busy ? <LoaderCircle className="spin" size={15} /> : <Image size={15} />}Start generation</button></div>
+  </form></section></div>
 }
 
 function VisualPromptDialog({ category, providers, current, onClose, onQueued }) {

@@ -33,6 +33,9 @@ def main() -> int:
     parser.add_argument("--display-title")
     parser.add_argument("--subtitle", default="ADVENTURE")
     parser.add_argument(
+        "--layout", choices=("portrait", "landscape"), default="portrait"
+    )
+    parser.add_argument(
         "--provider",
         default="openai-images",
         help="enabled OpenAI Images or ImageStudio connection ID",
@@ -72,12 +75,16 @@ def main() -> int:
         Path("background_previews")
         / _slug(args.category)
         / _slug(args.provider)
-        / "runtime_background.png"
+        / (
+            "runtime_background.png"
+            if args.layout == "portrait"
+            else "video_background_landscape.png"
+        )
     )
     plan_output = args.plan_output or (
         Path("background_previews")
         / _slug(args.category)
-        / "background-prompt-plan.json"
+        / f"background-prompt-plan-{args.layout}.json"
     )
     try:
         planning = None
@@ -97,6 +104,7 @@ def main() -> int:
                 retries=args.retries,
                 timeout_seconds=args.timeout,
                 force=args.refresh_plan,
+                layout=args.layout,
             )
             prompt = planned["plan"].prompt
             planning = {
@@ -141,6 +149,7 @@ def main() -> int:
             retries=args.retries,
             timeout_seconds=args.timeout,
             force=args.force,
+            layout=args.layout,
         )
     except (OSError, RuntimeError, ValueError) as exc:
         print(f"Background generation failed: {exc}", file=sys.stderr)

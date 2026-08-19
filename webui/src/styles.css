@@ -344,6 +344,7 @@ h1, h2, h3, p { margin-top: 0; }
 .visual-inspector-scroll { min-height: 0; display: grid; align-content: start; gap: 14px; overflow-y: auto; padding: 15px; }
 .visual-preview { aspect-ratio: 1; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 6px; color: #8a9690; background: #edf1ef; }
 .visual-preview.runtime_background { aspect-ratio: 9 / 13; max-height: 430px; }
+.visual-preview.video_background_landscape { aspect-ratio: 16 / 9; }
 .visual-preview img { width: 100%; height: 100%; object-fit: contain; }
 .visual-preview.runtime_background img { object-fit: cover; }
 .visual-meta { min-width: 0; display: flex; align-items: center; gap: 8px; }
@@ -358,6 +359,7 @@ h1, h2, h3, p { margin-top: 0; }
 .role-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin: 0; padding: 0; border: 0; }
 .role-options legend { margin-bottom: 7px; color: #4f5a54; font-size: 9px; font-weight: 750; }
 .role-options label, .check-field { min-height: 38px; display: flex; align-items: center; flex-direction: row; gap: 7px; padding: 8px; border: 1px solid var(--line); border-radius: 5px; color: #46534c; background: #fafbfa; font-size: 9px; }
+.dialog-checks { display: grid; gap: 6px; }
 .role-options input, .check-field input { width: 15px; height: 15px; margin: 0; accent-color: var(--green); }
 .check-field { align-self: end; }
 

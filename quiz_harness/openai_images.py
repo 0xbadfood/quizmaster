@@ -34,6 +34,12 @@ class OpenAIImageAssetSpec(StrictModel):
         "speaker_on",
         "speaker_muted",
         "progress_bar",
+        "video_background_landscape",
+        "video_progress_plaque",
+        "video_question_frame",
+        "video_answer_frame",
+        "video_explanation_frame",
+        "video_badge",
     ]
     source: Literal["openai", "user_upload"]
     provider: Literal["openai"] | None = None

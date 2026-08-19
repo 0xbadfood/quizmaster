@@ -8,6 +8,7 @@ from PIL import Image
 
 from quiz_harness.background_images import (
     BACKGROUND_SIZE,
+    LANDSCAPE_BACKGROUND_SIZE,
     _parse_prompt_plan,
     _validate_prompt_plan,
     build_background_planning_prompt,
@@ -26,7 +27,7 @@ def test_background_prompt_preserves_title_and_flutter_safe_area() -> None:
 
     assert 'Main title: "INDIAN INDEPENDENCE QUIZ"' in prompt
     assert 'Small ribbon subtitle: "ADVENTURE"' in prompt
-    assert "Keep the middle" in prompt
+    assert "keep the middle calmer" in prompt
     assert "living politicians" in prompt
 
 
@@ -180,6 +181,32 @@ def test_normalize_background_writes_runtime_dimensions(tmp_path: Path) -> None:
     assert result["width"] == 941
     assert result["height"] == 1672
     assert len(result["sha256"]) == 64
+
+
+def test_normalize_background_writes_landscape_video_dimensions(tmp_path: Path) -> None:
+    source = Image.new("RGB", (800, 800), (40, 100, 180))
+    payload = io.BytesIO()
+    source.save(payload, format="PNG")
+    output = tmp_path / "video_background_landscape.png"
+
+    result = normalize_background(payload.getvalue(), output, layout="landscape")
+
+    with Image.open(output) as generated:
+        assert generated.size == LANDSCAPE_BACKGROUND_SIZE
+    assert (result["width"], result["height"]) == LANDSCAPE_BACKGROUND_SIZE
+
+
+def test_qwen_landscape_prompt_defines_video_safe_areas() -> None:
+    prompt = build_background_planning_prompt(
+        category="Geography",
+        display_title="GEOGRAPHY QUIZ",
+        subtitle="ADVENTURE",
+        layout="landscape",
+    )
+
+    assert "1920x1080" in prompt
+    assert "true 16:9 landscape" in prompt
+    assert "four answer cards" in prompt
 
 
 def test_background_generation_reuses_matching_render(

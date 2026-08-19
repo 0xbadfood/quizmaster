@@ -73,7 +73,8 @@ def visual_fixture(tmp_path: Path) -> tuple[StudioVisualStore, dict, Path]:
 def test_visual_inventory_uses_actual_sets_and_allocated_choices(tmp_path: Path) -> None:
     store, category, category_root = visual_fixture(tmp_path)
     catalog, spec = store.prepare(category)
-    assert len(spec.assets) == 4
+    assert len(spec.assets) == 5
+    assert any(item.role == "video_background_landscape" for item in spec.assets)
     assert [item.asset_id for item in spec.assets if item.role == "quiz_tile"] == [
         "tile_beginner_01",
         "tile_beginner_02",
@@ -112,7 +113,7 @@ def test_background_upload_is_normalized_and_approved(tmp_path: Path) -> None:
     output = category_root / "assets/category/runtime_background.png"
     with Image.open(output) as image:
         assert image.format == "PNG"
-        assert image.size == (400, 700)
+        assert image.size == (941, 1672)
     manifest = json.loads(
         (category_root / "category-image-manifest.json").read_text(encoding="utf-8")
     )

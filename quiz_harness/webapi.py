@@ -22,6 +22,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .assets import generate_assets
+from .background_images import (
+    generate_quiz_background,
+    plan_quiz_background_prompt,
+)
 from .bundle import bundle_id, write_bundle_files
 from .client import VLLMClient
 from .database import QuizDatabase
@@ -71,6 +75,9 @@ CATEGORY_BUNDLE_ROOT = Path(
 )
 PROVIDER_TEST_ROOT = ASSET_ROOT / "provider-tests"
 PROVIDER_AUDIO_ROOT = ASSET_ROOT / "provider-audio"
+SECRET_KEY_FILE = Path(
+    os.getenv("QUIZ_SECRET_KEY_FILE", ROOT / "data/.provider_secret_key")
+)
 
 ASSET_ROOT.mkdir(parents=True, exist_ok=True)
 BUNDLE_ROOT.mkdir(parents=True, exist_ok=True)
@@ -80,7 +87,7 @@ database = QuizDatabase(DATABASE_PATH)
 database.migrate()
 secret_store = SecretStore(
     key=os.getenv("QUIZ_SECRET_KEY"),
-    key_file=Path(os.getenv("QUIZ_SECRET_KEY_FILE", ROOT / "data/.provider_secret_key")),
+    key_file=SECRET_KEY_FILE,
 )
 database.seed_provider_connections(
     [
@@ -373,6 +380,18 @@ class VisualGenerationRequest(BaseModel):
     provider_id: str = Field(min_length=2, max_length=100)
     model: str | None = Field(default=None, min_length=2, max_length=200)
     quality: str = Field(default="medium", pattern="^(low|medium|high|auto)$")
+    force: bool = False
+
+
+class LandscapeBackgroundGenerationRequest(BaseModel):
+    planner_provider_id: str = Field(min_length=2, max_length=100)
+    planner_model: str | None = Field(default=None, min_length=2, max_length=200)
+    image_provider_id: str = Field(min_length=2, max_length=100)
+    image_model: str | None = Field(default=None, min_length=2, max_length=200)
+    quality: str = Field(default="medium", pattern="^(low|medium|high|auto)$")
+    guidance: str = Field(default="", max_length=2000)
+    seed: int = Field(default=20260805, ge=0, le=2_147_483_647)
+    refresh_plan: bool = False
     force: bool = False
 
 
@@ -1097,6 +1116,138 @@ async def upload_category_background(
         raise HTTPException(status_code=404, detail="Category not found") from exc
     except (OSError, ValueError, StudioVisualError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post(
+    "/api/studio/categories/{category_slug}/visuals/landscape-background"
+)
+def generate_landscape_background(
+    category_slug: str, payload: LandscapeBackgroundGenerationRequest
+) -> dict[str, Any]:
+    active_jobs = [
+        job
+        for job in database.studio_jobs(limit=100)
+        if job["kind"] == "landscape_background_generation"
+        and job["status"] in {"queued", "running"}
+        and job.get("context", {}).get("category_slug") == category_slug
+    ]
+    if active_jobs:
+        raise HTTPException(
+            status_code=409,
+            detail="Landscape background generation is already active for this category",
+        )
+    try:
+        category = database.studio_category(category_slug)
+        planner = database.provider_connection(payload.planner_provider_id)
+        image_provider = database.provider_connection(payload.image_provider_id)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404, detail="Category or provider not found"
+        ) from exc
+    _require_category_metadata(category)
+    if planner["provider_type"] != "openai_compatible_llm" or not planner["enabled"]:
+        raise HTTPException(
+            status_code=422,
+            detail="Select an enabled OpenAI-compatible LLM planner",
+        )
+    if image_provider["provider_type"] not in {"openai_images", "imagestudio"}:
+        raise HTTPException(
+            status_code=422,
+            detail="Select an OpenAI Images or ImageStudio image provider",
+        )
+    if not image_provider["enabled"]:
+        raise HTTPException(status_code=409, detail="Enable the image provider first")
+    planner_model = payload.planner_model or planner.get("default_model") or next(
+        iter(planner.get("discovered_models") or []), None
+    )
+    image_model = payload.image_model or image_provider.get("default_model") or next(
+        iter(image_provider.get("discovered_models") or []), None
+    )
+    if not planner_model:
+        raise HTTPException(status_code=409, detail="Select a planner model")
+    if not image_model:
+        raise HTTPException(status_code=409, detail="Select an image model")
+    if (
+        image_provider["provider_type"] == "openai_images"
+        and not secret_store.decrypt(image_provider.get("secret_ciphertext"))
+    ):
+        raise HTTPException(
+            status_code=409, detail="Configure the OpenAI API key in Admin"
+        )
+
+    def target(progress: Callable[..., None]) -> dict[str, Any]:
+        root = studio_visuals.category_root(category_slug)
+        work = root / "background-generation"
+        plan_path = work / "video-background-landscape-prompt-plan.json"
+        guidance = "\n\n".join(
+            value.strip()
+            for value in (category.get("editorial_brief"), payload.guidance)
+            if value and value.strip()
+        )
+        progress("Planning 16:9 background", 0.08)
+        planned = plan_quiz_background_prompt(
+            category=category["name"],
+            display_title=category["display_title"],
+            subtitle="ADVENTURE",
+            provider_id=planner["id"],
+            database_path=DATABASE_PATH,
+            secret_key_file=SECRET_KEY_FILE,
+            output=plan_path,
+            model_override=str(planner_model),
+            category_guidance=guidance or None,
+            seed=payload.seed,
+            force=payload.refresh_plan,
+            layout="landscape",
+        )
+        plan_document = planned["plan"]
+        planning = {
+            **planned,
+            "plan": plan_document.model_dump(mode="json"),
+        }
+        progress("Rendering 1920x1080 background", 0.45)
+        generated = generate_quiz_background(
+            category=category["name"],
+            display_title=category["display_title"],
+            provider_id=image_provider["id"],
+            database_path=DATABASE_PATH,
+            secret_key_file=SECRET_KEY_FILE,
+            output=work / "video_background_landscape.png",
+            model_override=str(image_model),
+            quality=payload.quality,
+            seed=payload.seed,
+            subtitle="ADVENTURE",
+            prompt_override=plan_document.prompt,
+            planning_metadata=planning,
+            force=payload.force,
+            layout="landscape",
+        )
+        progress("Registering optional video background", 0.92)
+        registered = studio_visuals.upload_video_background_landscape(
+            category,
+            Path(generated["image"]["file"]).read_bytes(),
+            "image/png",
+        )
+        return {
+            "status": "complete",
+            "optional": True,
+            "planning": planning,
+            "generation": generated,
+            "registration": registered,
+        }
+
+    return jobs.start(
+        "landscape_background_generation",
+        target,
+        context={
+            "category_slug": category_slug,
+            "planner_provider_id": planner["id"],
+            "planner_model": planner_model,
+            "image_provider_id": image_provider["id"],
+            "image_model": image_model,
+            "quality": payload.quality,
+            "seed": payload.seed,
+        },
+    )
 
 
 @app.post("/api/studio/categories/{category_slug}/visuals/generate")

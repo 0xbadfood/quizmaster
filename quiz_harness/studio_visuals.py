@@ -45,7 +45,15 @@ from .visual_bank import (
 
 
 VISUAL_WRITE_LOCK = threading.Lock()
-VISUAL_ROLES = ("runtime_background", "category_selector", "quiz_tile", "answer_image")
+BACKGROUND_ROLES = {"runtime_background", "video_background_landscape"}
+OPTIONAL_VISUAL_ROLES = {"video_background_landscape"}
+VISUAL_ROLES = (
+    "runtime_background",
+    "video_background_landscape",
+    "category_selector",
+    "quiz_tile",
+    "answer_image",
+)
 VISUAL_REVIEW_STATUSES = ("generated_pending_review", "approved", "rejected")
 IMAGESTUDIO_NEGATIVE_PROMPT = (
     "watermark, unwanted logo, cropped subject, duplicate subject, blur, distortion"
@@ -306,6 +314,10 @@ class StudioVisualStore:
             "summary": {
                 "total": 0,
                 "generated": 0,
+                "required_total": 0,
+                "required_generated": 0,
+                "optional_total": 0,
+                "optional_generated": 0,
                 "approved": 0,
                 "pending_review": 0,
                 "rejected": 0,
@@ -386,7 +398,7 @@ class StudioVisualStore:
                 }
                 if _is_legacy_animal_fallback(prior.prompt):
                     update["prompt"] = asset.prompt
-                if prior.source == "user_upload" and background.exists():
+                if prior.source == "user_upload" and (root / asset.file).exists():
                     update["review_status"] = "approved"
                 merged.append(prior.model_copy(update=update))
             proposed = proposed.model_copy(update={"assets": merged})
@@ -465,7 +477,11 @@ class StudioVisualStore:
                     ),
                     "generation": record.get("generation", 0),
                     "error": record.get("error"),
-                    "prompt_status": plan_item.review_status if plan_item else "unplanned",
+                    "prompt_status": (
+                        "not_required"
+                        if item.role in BACKGROUND_ROLES
+                        else plan_item.review_status if plan_item else "unplanned"
+                    ),
                     "visual_summary": plan_item.visual_summary if plan_item else "",
                 }
             )
@@ -507,15 +523,18 @@ class StudioVisualStore:
             )
         status_counts = Counter(item["status"] for item in assets)
         role_counts = Counter(item["role"] for item in assets)
+        required_assets = [
+            item for item in assets if item["role"] not in OPTIONAL_VISUAL_ROLES
+        ]
         unplanned = sum(
-            item["role"] != "runtime_background"
+            item["role"] not in BACKGROUND_ROLES
             and item["prompt_status"] == "unplanned"
             for item in assets
         )
         attention = sum(
             item["status"] in {"rejected", "generation_failed"}
             or (
-                item["role"] != "runtime_background"
+                item["role"] not in BACKGROUND_ROLES
                 and item["prompt_status"] == "unplanned"
             )
             for item in assets
@@ -527,6 +546,16 @@ class StudioVisualStore:
             "summary": {
                 "total": len(assets),
                 "generated": sum(bool(item["image_url"]) for item in assets),
+                "required_total": len(required_assets),
+                "required_generated": sum(
+                    bool(item["image_url"]) for item in required_assets
+                ),
+                "optional_total": len(assets) - len(required_assets),
+                "optional_generated": sum(
+                    bool(item["image_url"])
+                    for item in assets
+                    if item["role"] in OPTIONAL_VISUAL_ROLES
+                ),
                 "approved": status_counts["approved"],
                 "pending_review": status_counts["generated_pending_review"],
                 "rejected": status_counts["rejected"],
@@ -673,17 +702,40 @@ class StudioVisualStore:
     def upload_background(
         self, category: dict[str, Any], data: bytes, content_type: str
     ) -> dict[str, Any]:
+        return self._upload_background_role(
+            category, data, content_type, role="runtime_background"
+        )
+
+    def upload_video_background_landscape(
+        self, category: dict[str, Any], data: bytes, content_type: str
+    ) -> dict[str, Any]:
+        return self._upload_background_role(
+            category, data, content_type, role="video_background_landscape"
+        )
+
+    def _upload_background_role(
+        self,
+        category: dict[str, Any],
+        data: bytes,
+        content_type: str,
+        *,
+        role: str,
+    ) -> dict[str, Any]:
         if not data:
             raise StudioVisualError("uploaded background is empty")
         root = self.category_root(category["slug"])
         _, document = self.prepare(category)
-        spec = next(item for item in document.assets if item.role == "runtime_background")
+        spec = next(item for item in document.assets if item.role == role)
         if not content_type.startswith("image/"):
             raise StudioVisualError("background upload must be an image")
         try:
             with Image.open(io.BytesIO(data)) as source:
                 source.load()
-                normalized = source.convert("RGB")
+                normalized = ImageOps.fit(
+                    source.convert("RGB"),
+                    (spec.output_width, spec.output_height),
+                    method=Image.Resampling.LANCZOS,
+                )
         except (OSError, UnidentifiedImageError) as exc:
             raise StudioVisualError(f"background upload is invalid: {exc}") from exc
         with tempfile.NamedTemporaryFile(suffix=".png") as handle:
@@ -719,7 +771,7 @@ class StudioVisualStore:
             quality=quality,
         )
         category_ids = {
-            item.asset_id for item in document.assets if item.role != "runtime_background"
+            item.asset_id for item in document.assets if item.role not in BACKGROUND_ROLES
         }
         answer_ids = {f"answer_{item.animal_key}" for item in catalog.animals}
         unknown = asset_ids - category_ids - answer_ids

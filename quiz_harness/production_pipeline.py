@@ -488,7 +488,7 @@ class CategoryProductionPipeline:
         self._log("background", f"registered {path.name}")
         return result
 
-    def _ensure_background(self, category: dict[str, Any]) -> dict[str, Any]:
+    def _ensure_portrait_background(self, category: dict[str, Any]) -> dict[str, Any]:
         if self.config.background is not None:
             return self._upload_background(category)
 
@@ -588,6 +588,125 @@ class CategoryProductionPipeline:
         }
         self.checkpoint.update(
             "background", {"status": "complete", "source": "generated", "result": result}
+        )
+        return result
+
+    def _ensure_landscape_background(
+        self, category: dict[str, Any]
+    ) -> dict[str, Any]:
+        root = self.visuals.category_root(category["slug"])
+        landscape_background = (
+            root / "assets/category/video_background_landscape.png"
+        )
+        if (
+            landscape_background.is_file()
+            and not self.config.force_background
+            and not self.config.refresh_background_plan
+        ):
+            try:
+                with Image.open(landscape_background) as source:
+                    source.load()
+                    valid = source.size == (1920, 1080)
+            except (OSError, UnidentifiedImageError):
+                valid = False
+            if valid:
+                registered = self.visuals.upload_video_background_landscape(
+                    category, landscape_background.read_bytes(), "image/png"
+                )
+                self._log("background", "reusing registered landscape video background")
+                return {
+                    "asset_id": registered["asset_id"],
+                    "status": "approved",
+                    "file": str(landscape_background),
+                    "reused": True,
+                }
+            self._log("background", "existing landscape background is invalid; regenerating")
+
+        work = root / "background-generation"
+        plan_path = work / "video-background-landscape-prompt-plan.json"
+        guidance = "\n\n".join(
+            value.strip()
+            for value in (
+                category.get("editorial_brief"),
+                self.config.background_guidance,
+            )
+            if value and value.strip()
+        )
+        self.checkpoint.update(
+            "background",
+            {
+                "status": "planning_landscape",
+                "planner_provider_id": self.config.qwen_provider_id,
+                "image_provider_id": self.config.background_provider_id,
+            },
+        )
+        self._log("background", "planning landscape video background with Qwen")
+        planned = plan_quiz_background_prompt(
+            category=category["name"],
+            display_title=category["display_title"],
+            subtitle="ADVENTURE",
+            provider_id=self.config.qwen_provider_id,
+            database_path=self.config.database_path,
+            secret_key_file=self.config.secret_key_file,
+            output=plan_path,
+            model_override=self.config.qwen_model,
+            category_guidance=guidance or None,
+            seed=self.config.seed + 1000,
+            force=self.config.refresh_background_plan,
+            layout="landscape",
+        )
+        plan_document = planned["plan"]
+        planning = {
+            **planned,
+            "plan": plan_document.model_dump(mode="json"),
+        }
+        self.checkpoint.update(
+            "background", {"status": "generating_landscape", "planning": planning}
+        )
+        self._log(
+            "background",
+            f"rendering landscape background with {self.config.background_provider_id}",
+        )
+        generated = generate_quiz_background(
+            category=category["name"],
+            display_title=category["display_title"],
+            provider_id=self.config.background_provider_id,
+            database_path=self.config.database_path,
+            secret_key_file=self.config.secret_key_file,
+            output=work / "video_background_landscape.png",
+            model_override=self.config.background_model,
+            quality=self.config.image_quality,
+            seed=self.config.seed + 1000,
+            subtitle="ADVENTURE",
+            prompt_override=plan_document.prompt,
+            planning_metadata=planning,
+            force=self.config.force_background,
+            layout="landscape",
+        )
+        registered = self.visuals.upload_video_background_landscape(
+            category, Path(generated["image"]["file"]).read_bytes(), "image/png"
+        )
+        return {
+            "source": "generated",
+            "planning": planning,
+            "generation": generated,
+            "registration": registered,
+        }
+
+    def _ensure_background(self, category: dict[str, Any]) -> dict[str, Any]:
+        portrait = self._ensure_portrait_background(category)
+        try:
+            landscape = self._ensure_landscape_background(category)
+        except Exception as exc:
+            landscape = {
+                "status": "failed",
+                "optional": True,
+                "error": str(exc),
+            }
+            self._log("background", f"optional landscape background failed: {exc}")
+        result = {**portrait, "video_background_landscape": landscape}
+        self.checkpoint.update(
+            "background", {"status": "complete", "result": result}
         )
         return result
 
@@ -796,7 +915,11 @@ class CategoryProductionPipeline:
             )
             raise CategoryPipelineError(f"visual generation queue failed: {failures}")
         final_inventory = self.visuals.inventory(category)
-        if final_inventory["summary"]["generated"] != final_inventory["summary"]["total"]:
+        final_summary = final_inventory["summary"]
+        if (
+            final_summary.get("required_generated", final_summary["generated"])
+            != final_summary.get("required_total", final_summary["total"])
+        ):
             raise CategoryPipelineError("visual branch ended with missing assets")
         result = {
             "background": background,

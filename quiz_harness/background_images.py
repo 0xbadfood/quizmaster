@@ -22,8 +22,22 @@ from .secure_store import SecretStore
 from .visual_bank import slugify
 
 
+BackgroundLayout = Literal["portrait", "landscape"]
+
 BACKGROUND_SIZE = (941, 1672)
-IMAGESTUDIO_REQUEST_SIZE = (768, 1344)
+LANDSCAPE_BACKGROUND_SIZE = (1920, 1080)
+BACKGROUND_SIZES: dict[BackgroundLayout, tuple[int, int]] = {
+    "portrait": BACKGROUND_SIZE,
+    "landscape": LANDSCAPE_BACKGROUND_SIZE,
+}
+OPENAI_REQUEST_SIZES: dict[BackgroundLayout, str] = {
+    "portrait": "1024x1536",
+    "landscape": "1536x1024",
+}
+IMAGESTUDIO_REQUEST_SIZES: dict[BackgroundLayout, tuple[int, int]] = {
+    "portrait": (768, 1344),
+    "landscape": (1344, 768),
+}
 SUPPORTED_PROVIDER_TYPES = {"openai_images", "imagestudio"}
 
 
@@ -50,10 +64,30 @@ def build_background_planning_prompt(
     display_title: str,
     subtitle: str,
     category_guidance: str | None = None,
+    layout: BackgroundLayout = "portrait",
 ) -> str:
     guidance = category_guidance.strip() if category_guidance else "None supplied."
+    if layout == "landscape":
+        production_contract = """- The normalized video asset is exactly 1920x1080 pixels in a true 16:9 landscape composition.
+- Reserve roughly the top 30 percent for a large dimensional title emblem containing
+  the exact main title and a smaller ribbon containing the exact subtitle.
+- Keep the center from 30 to 62 percent calm, lower contrast, and relatively
+  uncluttered for a wide question panel.
+- Keep the lower center from 62 to 96 percent calm enough for four answer cards in
+  one horizontal row. Put category storytelling and decoration mainly at the far
+  left and right edges and behind the title.
+- Keep all critical content inside a centered 16:9 crop with expendable scenery at
+  the extreme top and bottom because some providers return a wider 3:2 source."""
+    else:
+        production_contract = """- The normalized Flutter asset is exactly 941x1672 pixels: a tall 9:16-like portrait.
+- Reserve roughly the top 28 percent for a large dimensional title emblem containing
+  the exact main title and a smaller ribbon containing the exact subtitle.
+- Keep the central 30 to 72 percent calmer, lower contrast, and relatively uncluttered
+  because Flutter places question and answer controls over that area.
+- Put category storytelling, characters, landmarks, and decorative detail around the
+  outer edges and lower third, with generous portrait safe margins."""
     return f"""Plan and write the final text-to-image prompt for one children's quiz
-runtime background.
+{layout} background.
 
 Category: {category}
 Main title that must be embedded exactly: {display_title}
@@ -61,16 +95,10 @@ Ribbon subtitle that must be embedded exactly: {subtitle}
 Optional editorial guidance: {guidance}
 
 Fixed production contract:
-- The normalized Flutter asset is exactly 941x1672 pixels: a tall 9:16-like portrait.
+{production_contract}
 - The image must be one coherent immersive scene, never a collage or separate panels.
 - Use a polished high-end family-friendly 3D animated illustration aesthetic without
   naming or imitating a studio, franchise, film, character, or living artist.
-- Reserve roughly the top 28 percent for a large dimensional title emblem containing
-  the exact main title and a smaller ribbon containing the exact subtitle.
-- Keep the central 30 to 72 percent calmer, lower contrast, and relatively uncluttered
-  because Flutter places question and answer controls over that area.
-- Put category storytelling, characters, landmarks, and decorative detail around the
-  outer edges and lower third, with generous portrait safe margins.
 - Represent the category broadly. Do not illustrate one particular quiz question or
   leak an answer.
 - Make the scene culturally and historically accurate where relevant, celebratory,
@@ -88,7 +116,11 @@ sent directly to either OpenAI Images or ImageStudio without another writing pas
 
 
 def _validate_prompt_plan(
-    plan: BackgroundPromptPlan, *, display_title: str, subtitle: str
+    plan: BackgroundPromptPlan,
+    *,
+    display_title: str,
+    subtitle: str,
+    layout: BackgroundLayout = "portrait",
 ) -> None:
     folded = plan.prompt.casefold()
     missing = [
@@ -104,12 +136,23 @@ def _validate_prompt_plan(
     named_style = next((name for name in banned if name in folded), None)
     if named_style:
         raise ValueError(f"background prompt names copyrighted style: {named_style}")
-    vertical_mobile = "vertical" in folded and any(
-        marker in folded
-        for marker in ("9:16", "941x1672", "mobile screen", "tall screen")
-    )
-    if "portrait" not in folded and not vertical_mobile:
-        raise ValueError("background prompt must explicitly request portrait composition")
+    if layout == "landscape":
+        landscape = "landscape" in folded or any(
+            marker in folded for marker in ("16:9", "1920x1080", "wide screen")
+        )
+        if not landscape:
+            raise ValueError(
+                "background prompt must explicitly request landscape composition"
+            )
+    else:
+        vertical_mobile = "vertical" in folded and any(
+            marker in folded
+            for marker in ("9:16", "941x1672", "mobile screen", "tall screen")
+        )
+        if "portrait" not in folded and not vertical_mobile:
+            raise ValueError(
+                "background prompt must explicitly request portrait composition"
+            )
 
 
 def _text(value: Any) -> str:
@@ -210,6 +253,7 @@ def plan_quiz_background_prompt(
     retries: int = 2,
     timeout_seconds: float = 900.0,
     force: bool = False,
+    layout: BackgroundLayout = "portrait",
 ) -> dict[str, Any]:
     database = QuizDatabase(database_path)
     database.migrate()
@@ -229,6 +273,7 @@ def plan_quiz_background_prompt(
         display_title=display_title,
         subtitle=subtitle,
         category_guidance=category_guidance,
+        layout=layout,
     )
     output = output.expanduser().resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -238,7 +283,10 @@ def plan_quiz_background_prompt(
                 output.read_text(encoding="utf-8")
             )
             _validate_prompt_plan(
-                cached, display_title=display_title, subtitle=subtitle
+                cached,
+                display_title=display_title,
+                subtitle=subtitle,
+                layout=layout,
             )
             return {
                 "plan": cached,
@@ -256,7 +304,10 @@ def plan_quiz_background_prompt(
             try:
                 recovered = _parse_prompt_plan(raw_path.read_text(encoding="utf-8"))
                 _validate_prompt_plan(
-                    recovered, display_title=display_title, subtitle=subtitle
+                    recovered,
+                    display_title=display_title,
+                    subtitle=subtitle,
+                    layout=layout,
                 )
                 temporary = output.with_suffix(output.suffix + ".tmp")
                 temporary.write_text(
@@ -312,7 +363,10 @@ def plan_quiz_background_prompt(
                 )
                 plan = _parse_prompt_plan(raw)
                 _validate_prompt_plan(
-                    plan, display_title=display_title, subtitle=subtitle
+                    plan,
+                    display_title=display_title,
+                    subtitle=subtitle,
+                    layout=layout,
                 )
                 temporary = output.with_suffix(output.suffix + ".tmp")
                 temporary.write_text(
@@ -351,23 +405,30 @@ def build_background_prompt(
     display_title: str,
     visual_brief: str | None = None,
     subtitle: str = "ADVENTURE",
+    layout: BackgroundLayout = "portrait",
 ) -> str:
     subject_guidance = (
         visual_brief.strip()
         if visual_brief and visual_brief.strip()
         else f"Use iconic places, objects, and atmosphere associated with {category}."
     )
-    return f"""Create one polished portrait background for a children's {category} quiz.
-The final image fills a tall mobile screen. Build one coherent, immersive scene rather
+    if layout == "landscape":
+        layout_direction = """The final image is a true 16:9 landscape video background. Reserve the top 30
+percent for the title, keep the central band calm for a wide question panel, and keep
+the lower center calm for four answer cards in one horizontal row. Place supporting
+scenery mainly at the far left and right edges."""
+    else:
+        layout_direction = """The final image fills a tall mobile screen. Reserve the top 28 percent for the
+title and keep the middle calmer and lower-contrast for Flutter question and answer
+controls. Place supporting scenery mainly around the outer edges and lower third."""
+    return f"""Create one polished {layout} background for a children's {category} quiz.
+{layout_direction} Build one coherent, immersive scene rather
 than a collage. Use a high-end family-friendly 3D animated illustration aesthetic,
 rich natural color, cinematic light, appealing depth, and crisp readable silhouettes.
 
 Visual direction: {subject_guidance}
 
-Reserve the top 28 percent for a large dimensional title emblem. Keep the middle of
-the image calmer and lower-contrast so Flutter question and answer controls remain
-readable over it. Place supporting scenery mainly around the outer edges and lower
-third. Keep all important content within generous portrait safe margins.
+Keep all important content within generous safe margins.
 
 Render exactly these two text elements and spell them exactly:
 1. Main title: "{display_title}"
@@ -380,15 +441,22 @@ The result must feel celebratory, educational, historically respectful, and suit
 for children ages 3 to 10."""
 
 
-def normalize_background(data: bytes, output: Path) -> dict[str, Any]:
+def normalize_background(
+    data: bytes,
+    output: Path,
+    *,
+    layout: BackgroundLayout = "portrait",
+) -> dict[str, Any]:
+    target_size = BACKGROUND_SIZES[layout]
     try:
         with Image.open(io.BytesIO(data)) as source:
             source.load()
+            centering = (0.5, 0.45) if layout == "landscape" else (0.5, 0.5)
             image = ImageOps.fit(
                 source.convert("RGB"),
-                BACKGROUND_SIZE,
+                target_size,
                 method=Image.Resampling.LANCZOS,
-                centering=(0.5, 0.5),
+                centering=centering,
             )
     except (OSError, UnidentifiedImageError) as exc:
         raise BackgroundGenerationError(
@@ -403,19 +471,21 @@ def normalize_background(data: bytes, output: Path) -> dict[str, Any]:
     payload = output.read_bytes()
     return {
         "file": str(output),
-        "width": BACKGROUND_SIZE[0],
-        "height": BACKGROUND_SIZE[1],
+        "width": target_size[0],
+        "height": target_size[1],
         "format": "png",
         "bytes": len(payload),
         "sha256": hashlib.sha256(payload).hexdigest(),
     }
 
 
-def _valid_background(path: Path) -> bool:
+def _valid_background(
+    path: Path, *, layout: BackgroundLayout = "portrait"
+) -> bool:
     try:
         with Image.open(path) as image:
             image.load()
-            return image.format == "PNG" and image.size == BACKGROUND_SIZE
+            return image.format == "PNG" and image.size == BACKGROUND_SIZES[layout]
     except (OSError, UnidentifiedImageError):
         return False
 
@@ -440,6 +510,7 @@ def _openai_image(
     quality: str,
     retries: int,
     timeout_seconds: float,
+    request_size: str,
 ) -> tuple[bytes, dict[str, Any]]:
     if not secret:
         raise BackgroundGenerationError(
@@ -458,7 +529,7 @@ def _openai_image(
                     prompt=prompt,
                     n=1,
                     quality=quality,
-                    size="1024x1536",
+                    size=request_size,
                     background="opaque",
                     output_format="png",
                     moderation="auto",
@@ -475,7 +546,7 @@ def _openai_image(
                         if response.usage is not None
                         else None
                     ),
-                    "request_size": "1024x1536",
+                    "request_size": request_size,
                 }
             except (APIError, ValueError, BackgroundGenerationError) as exc:
                 last_error = exc
@@ -491,6 +562,7 @@ def _imagestudio_image(
     prompt: str,
     seed: int,
     timeout_seconds: float,
+    request_size: tuple[int, int],
 ) -> tuple[bytes, dict[str, Any]]:
     negative_prompt = (
         "unwanted text, misspelled text, extra letters, dates, numbers, watermark, "
@@ -504,8 +576,8 @@ def _imagestudio_image(
         data, metadata = client.generate(
             prompt=prompt,
             negative_prompt=negative_prompt,
-            width=IMAGESTUDIO_REQUEST_SIZE[0],
-            height=IMAGESTUDIO_REQUEST_SIZE[1],
+            width=request_size[0],
+            height=request_size[1],
             steps=8,
             cfg=1.0,
             seed=seed,
@@ -513,7 +585,7 @@ def _imagestudio_image(
     return data, {
         "seed": metadata.get("seed", seed),
         "elapsed_seconds": metadata.get("elapsed_sec"),
-        "request_size": f"{IMAGESTUDIO_REQUEST_SIZE[0]}x{IMAGESTUDIO_REQUEST_SIZE[1]}",
+        "request_size": f"{request_size[0]}x{request_size[1]}",
     }
 
 
@@ -535,6 +607,7 @@ def generate_quiz_background(
     retries: int = 2,
     timeout_seconds: float = 900.0,
     force: bool = False,
+    layout: BackgroundLayout = "portrait",
 ) -> dict[str, Any]:
     database = QuizDatabase(database_path)
     database.migrate()
@@ -555,6 +628,7 @@ def generate_quiz_background(
         display_title=display_title,
         visual_brief=visual_brief,
         subtitle=subtitle,
+        layout=layout,
     )
     if len(prompt) < 100:
         raise BackgroundGenerationError("background prompt must contain at least 100 characters")
@@ -570,13 +644,14 @@ def generate_quiz_background(
                 "quality": quality,
                 "seed": seed if provider["provider_type"] == "imagestudio" else None,
                 "prompt": prompt,
-                "size": BACKGROUND_SIZE,
+                "size": BACKGROUND_SIZES[layout],
+                "layout": layout,
             },
             sort_keys=True,
             separators=(",", ":"),
         ).encode("utf-8")
     ).hexdigest()
-    if not force and manifest.is_file() and _valid_background(output):
+    if not force and manifest.is_file() and _valid_background(output, layout=layout):
         try:
             cached = json.loads(manifest.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
@@ -597,6 +672,7 @@ def generate_quiz_background(
             quality=quality,
             retries=retries,
             timeout_seconds=timeout_seconds,
+            request_size=OPENAI_REQUEST_SIZES[layout],
         )
     else:
         data, generation = _imagestudio_image(
@@ -605,15 +681,17 @@ def generate_quiz_background(
             prompt=prompt,
             seed=seed,
             timeout_seconds=timeout_seconds,
+            request_size=IMAGESTUDIO_REQUEST_SIZES[layout],
         )
 
-    image = normalize_background(data, output)
+    image = normalize_background(data, output, layout=layout)
     result = {
         "schema_version": "quiz_background_generation_v1",
         "category": category,
         "category_slug": slugify(category),
         "display_title": display_title,
         "subtitle": subtitle,
+        "layout": layout,
         "provider_id": provider["id"],
         "provider_type": provider["provider_type"],
         "model": model,

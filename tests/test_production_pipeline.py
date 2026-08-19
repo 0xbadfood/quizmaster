@@ -175,10 +175,50 @@ def test_existing_background_is_reused_without_planning(tmp_path: Path) -> None:
     pipeline.checkpoint = Checkpoint()
     pipeline._log = lambda *_: None
 
-    result = pipeline._ensure_background({"slug": "space"})
+    result = pipeline._ensure_portrait_background({"slug": "space"})
 
     assert result["reused"] is True
     assert pipeline.checkpoint.updates[-1][1]["source"] == "existing"
+
+
+def test_existing_landscape_background_is_registered_and_reused(tmp_path: Path) -> None:
+    landscape = (
+        tmp_path / "space" / "assets/category/video_background_landscape.png"
+    )
+    landscape.parent.mkdir(parents=True)
+    from PIL import Image
+
+    Image.new("RGB", (1920, 1080), "navy").save(landscape)
+
+    class Visuals:
+        @staticmethod
+        def category_root(slug: str) -> Path:
+            return tmp_path / slug
+
+        @staticmethod
+        def upload_video_background_landscape(
+            category: dict[str, object], data: bytes, content_type: str
+        ) -> dict[str, str]:
+            assert category["slug"] == "space"
+            assert data
+            assert content_type == "image/png"
+            return {
+                "asset_id": "space_video_background_landscape",
+                "status": "approved",
+            }
+
+    pipeline = object.__new__(CategoryProductionPipeline)
+    pipeline.config = SimpleNamespace(
+        force_background=False,
+        refresh_background_plan=False,
+    )
+    pipeline.visuals = Visuals()
+    pipeline._log = lambda *_: None
+
+    result = pipeline._ensure_landscape_background({"slug": "space"})
+
+    assert result["asset_id"] == "space_video_background_landscape"
+    assert result["reused"] is True
 
 
 def test_missing_background_is_planned_rendered_and_registered(
@@ -257,7 +297,7 @@ def test_missing_background_is_planned_rendered_and_registered(
     pipeline.checkpoint = Checkpoint()
     pipeline._log = lambda *_: None
 
-    result = pipeline._ensure_background(
+    result = pipeline._ensure_portrait_background(
         {
             "slug": "space",
             "name": "Space",

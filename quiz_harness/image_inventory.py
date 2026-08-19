@@ -68,9 +68,13 @@ def build_category_image_spec(
     model: str = DEFAULT_OPENAI_IMAGE_MODEL,
     quality: str = "medium",
     background_ready: bool = False,
+    landscape_background_ready: bool | None = None,
 ) -> OpenAIImageSpecDocument:
     quiz_sets = _load_quiz_sets(category_root)
     category_slug = slugify(category)
+    landscape_background = category_root / "assets/category/video_background_landscape.png"
+    if landscape_background_ready is None:
+        landscape_background_ready = landscape_background.is_file()
     assets = [
         OpenAIImageAssetSpec(
             asset_id=f"{category_slug}_runtime_background",
@@ -87,6 +91,25 @@ def build_category_image_spec(
             ),
             exact_text=[display_title],
             review_status="approved" if background_ready else "awaiting_upload",
+        ),
+        OpenAIImageAssetSpec(
+            asset_id=f"{category_slug}_video_background_landscape",
+            scope="category",
+            role="video_background_landscape",
+            source="user_upload",
+            output_width=1920,
+            output_height=1080,
+            background="opaque",
+            file="assets/category/video_background_landscape.png",
+            prompt=(
+                "Pipeline-generated 16:9 category video background with an embedded "
+                "category title and safe regions for a question panel and four "
+                "horizontal answer cards."
+            ),
+            exact_text=[display_title],
+            review_status=(
+                "approved" if landscape_background_ready else "awaiting_upload"
+            ),
         ),
         OpenAIImageAssetSpec(
             asset_id=f"{category_slug}_category_selector",
@@ -163,6 +186,18 @@ def _global_style() -> str:
     )
 
 
+def _video_ui_style() -> str:
+    return (
+        "Use one consistent premium children's adventure-quiz UI style: warm carved "
+        "wood, cream parchment, restrained polished gold trim, dimensional beveled "
+        "edges, soft studio highlights, clean symmetrical construction, crisp edges, "
+        "and strong readability at video resolution. Isolate the complete asset on a "
+        "flat pure white background with generous empty white space so the adapter can "
+        "extract a clean transparent outer background. Include no words, letters, numbers, icons, "
+        "characters, scenery, logos, or watermarks."
+    )
+
+
 def build_global_image_spec(
     *,
     model: str = DEFAULT_OPENAI_IMAGE_MODEL,
@@ -234,6 +269,109 @@ def build_global_image_spec(
         ),
     ]
 
+    video_style = _video_ui_style()
+    assets.extend(
+        [
+            OpenAIImageAssetSpec(
+                **common,
+                asset_id="video_progress_plaque",
+                role="video_progress_plaque",
+                api_size="1536x1024",
+                output_width=1200,
+                output_height=320,
+                background="transparent",
+                api_background="opaque",
+                file="assets/video/video_progress_plaque.webp",
+                prompt=(
+                    f"{video_style} Create one wide blank carved-wood plaque for a "
+                    "question progress label. Use a simple horizontal silhouette with "
+                    "a broad completely empty central writing area, subtle corner "
+                    "bolts, and generous pure-white space around the complete object."
+                ),
+            ),
+            OpenAIImageAssetSpec(
+                **common,
+                asset_id="video_question_frame",
+                role="video_question_frame",
+                api_size="1536x1024",
+                output_width=1600,
+                output_height=640,
+                background="transparent",
+                api_background="opaque",
+                file="assets/video/video_question_frame.webp",
+                prompt=(
+                    f"{video_style} Create one wide rounded rectangular ornamental "
+                    "frame for a quiz question. Show only a slim cream-and-gold border "
+                    "with restrained carved-wood corner accents. The entire large "
+                    "interior must be completely blank pale cream with no markings so "
+                    "code-rendered question text can be placed over it."
+                ),
+            ),
+            OpenAIImageAssetSpec(
+                **common,
+                asset_id="video_answer_frame",
+                role="video_answer_frame",
+                api_size="1024x1024",
+                output_width=760,
+                output_height=820,
+                background="transparent",
+                api_background="opaque",
+                file="assets/video/video_answer_frame.webp",
+                prompt=(
+                    f"{video_style} Create one tall rounded rectangular ornamental "
+                    "frame for a visual answer card. Show only a slim neutral cream "
+                    "and gold border. Leave one large upper image opening and one "
+                    "short lower label area; both areas must be completely blank pale "
+                    "cream with no markings for code-rendered content."
+                ),
+            ),
+            OpenAIImageAssetSpec(
+                **common,
+                asset_id="video_explanation_frame",
+                role="video_explanation_frame",
+                api_size="1536x1024",
+                output_width=1600,
+                output_height=1100,
+                background="transparent",
+                api_background="opaque",
+                file="assets/video/video_explanation_frame.webp",
+                prompt=(
+                    f"{video_style} Create one large rounded rectangular ornamental "
+                    "reveal frame for a correct-answer image and explanation. Show "
+                    "only a slim cream parchment, gold, and carved-wood outer border. "
+                    "The broad interior must be completely blank pale cream with no "
+                    "markings for dynamic image and text content."
+                ),
+            ),
+        ]
+    )
+    badge_colors = {
+        "purple": "rich royal purple",
+        "green": "fresh leaf green",
+        "orange": "warm vivid orange",
+        "blue": "bright ocean blue",
+    }
+    for color, description in badge_colors.items():
+        assets.append(
+            OpenAIImageAssetSpec(
+                **common,
+                asset_id=f"video_badge_{color}",
+                role="video_badge",
+                api_size="1024x1024",
+                output_width=320,
+                output_height=320,
+                background="transparent",
+                api_background="opaque",
+                file=f"assets/video/video_badge_{color}.webp",
+                prompt=(
+                    f"{video_style} Create one blank circular {description} quiz badge "
+                    "with a thick cream inner ring, restrained polished-gold outer "
+                    "rim, dimensional bevel, and a completely empty center. Keep the "
+                    "full badge centered with generous pure-white space around it."
+                ),
+            )
+        )
+
     return OpenAIImageSpecDocument(
         schema_version="openai_image_spec_v1",
         name="global_presentation_images",
@@ -241,6 +379,50 @@ def build_global_image_spec(
         generated_at_utc=datetime.now(timezone.utc).isoformat(),
         assets=assets,
     )
+
+
+def build_video_presentation_inventory() -> dict[str, object]:
+    return {
+        "schema_version": "quiz_video_presentation_inventory_v1",
+        "rendering": "remotion",
+        "category_assets": {
+            "portrait_background": {
+                "role": "runtime_background",
+                "size": [941, 1672],
+            },
+            "landscape_background": {
+                "role": "video_background_landscape",
+                "size": [1920, 1080],
+            },
+            "answer_images": "Reuse the category answer_assets referenced by each quiz.",
+        },
+        "global_assets": {
+            "progress_plaque": "video_progress_plaque",
+            "question_frame": "video_question_frame",
+            "answer_frame": "video_answer_frame",
+            "explanation_frame": "video_explanation_frame",
+            "badges": [
+                "video_badge_purple",
+                "video_badge_green",
+                "video_badge_orange",
+                "video_badge_blue",
+            ],
+        },
+        "dynamic_content": {
+            "progress_text": "QUESTION {current} OF {total}",
+            "question_badge_text": "Q",
+            "answer_badge_text": ["A", "B", "C", "D"],
+            "badge_assignment": "deterministically shuffled per question",
+            "question_text": "rendered by Remotion",
+            "answer_labels": "rendered by Remotion",
+            "explanation_text": "rendered by Remotion",
+        },
+        "audio": {
+            "question": "category question narration",
+            "timer": "global five-second timer with chime",
+            "explanation": "category explanation narration",
+        },
+    }
 
 
 def build_progress_style() -> dict[str, object]:
