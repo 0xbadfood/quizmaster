@@ -5,6 +5,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -72,7 +73,7 @@ def build_background_planning_prompt(
 - HARD HEADER LIMIT: render only the main title inside one shallow banner near the
   top. Do not add a subtitle or ribbon. Leave at least 6 percent clear space above the
   banner so no border or letter touches the top edge. The complete title banner must
-  fit inside y=6% to y=18% of the final frame. Scale the lettering down as needed,
+  fit inside y=6% to y=20% of the final frame. Scale the lettering down as needed,
   center it, and keep it within roughly 70 percent of the frame width; never let the
   banner expand into the quiz content area or touch the side edges.
 - Keep y=20% to y=52% calm and open for one large, wide question panel.
@@ -137,6 +138,11 @@ def _validate_prompt_plan(
 ) -> None:
     folded = plan.prompt.casefold()
     folded_compact = " ".join(folded.split())
+    semantic_compact = " ".join(
+        " ".join(
+            (plan.prompt, plan.composition, plan.palette_and_lighting)
+        ).casefold().split()
+    )
     required_text = (
         (display_title,) if layout == "landscape" else (display_title, subtitle)
     )
@@ -163,25 +169,32 @@ def _validate_prompt_plan(
             raise ValueError(
                 "background prompt must explicitly request landscape composition"
             )
-        shallow_header = "banner" in folded_compact and any(
-            marker in folded_compact
-            for marker in (
-                "y=6% to y=18%",
-                "y=6% through y=18%",
-                "6% to 18%",
-                "6 percent to 18 percent",
+        shallow_header = "banner" in folded_compact and bool(
+            re.search(
+                r"(?:y\s*=\s*)?6\s*(?:%|percent)\s*"
+                r"(?:to|through|and|-)\s*"
+                r"(?:y\s*=\s*)?(?:18|19|20)\s*(?:%|percent)",
+                folded_compact,
             )
         )
         if not shallow_header:
             raise ValueError(
-                "landscape background prompt must confine the title banner to y=6%-18%"
+                "landscape background prompt must confine the title banner to y=6%-20%"
             )
         light_field = any(
-            marker in folded_compact
+            marker in semantic_compact
             for marker in ("high-key", "light-toned", "pale", "soft pastel")
         ) and any(
-            marker in folded_compact
-            for marker in ("low-contrast", "low contrast", "restrained contrast")
+            marker in semantic_compact
+            for marker in (
+                "low-contrast",
+                "low contrast",
+                "restrained contrast",
+                "soft focus",
+                "soft-focus",
+                "blurred background",
+                "minimal shadows",
+            )
         )
         if not light_field:
             raise ValueError(
@@ -283,6 +296,8 @@ def _parse_prompt_plan(raw: str) -> BackgroundPromptPlan:
             for item in (_text(scene.get("palette")), _text(scene.get("lighting")))
             if item
         )
+    if not palette:
+        palette = scene_concept
     return BackgroundPromptPlan(
         schema_version="quiz_background_prompt_plan_v1",
         visual_summary=visual_summary[:500],
@@ -472,7 +487,7 @@ def build_background_prompt(
         layout_direction = """The final image is a true 16:9 landscape video background. Confine the exact
 main title to one shallow banner. Render no subtitle and no subtitle ribbon. Leave
 the upper 6 percent completely clear and fit the entire title banner inside y=6% to
-y=18%, with no border or letter touching the top edge. Center it within roughly 70
+y=20%, with no border or letter touching the top edge. Center it within roughly 70
 percent of the frame width rather than stretching it edge to edge. Keep y=20% to
 y=52% open for a wide question panel and y=52% to y=96% open for four horizontal answer panels in a single row of four.
 Outside the header, use a high-key, light-toned, low-contrast field with pale sky

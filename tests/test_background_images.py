@@ -209,7 +209,7 @@ def test_qwen_landscape_prompt_defines_video_safe_areas() -> None:
     assert "1920x1080" in prompt
     assert "true 16:9 landscape" in prompt
     assert "HARD HEADER LIMIT" in prompt
-    assert "y=6% to y=18%" in prompt
+    assert "y=6% to y=20%" in prompt
     assert "single row of four" in prompt
     assert "high-key, light-toned, low-contrast" in prompt
     assert "Do not plan a two-by-two answer grid" in prompt
@@ -225,7 +225,7 @@ def test_direct_landscape_prompt_uses_shallow_light_quiz_layout() -> None:
     )
     compact = " ".join(prompt.split())
 
-    assert "y=6% to y=18%" in compact
+    assert "y=6% to y=20%" in compact
     assert "y=20% to y=52%" in compact
     assert "single row of four" in compact
     assert "high-key, light-toned, low-contrast" in compact
@@ -263,13 +263,44 @@ def test_landscape_validator_rejects_legacy_oversized_banner_plan() -> None:
         prompt=legacy_prompt,
     )
 
-    with pytest.raises(ValueError, match="y=6%-18%"):
+    with pytest.raises(ValueError, match="y=6%-20%"):
         _validate_prompt_plan(
             plan,
             display_title="GEOGRAPHY QUIZ",
             subtitle="ADVENTURE",
             layout="landscape",
         )
+
+
+def test_landscape_validator_accepts_between_and_percentage_wording() -> None:
+    prompt = build_background_prompt(
+        category="Food",
+        display_title="FOOD QUIZ",
+        layout="landscape",
+    ).replace("inside y=6% to\ny=20%", "between y=6% and y=20%")
+    plan = BackgroundPromptPlan(
+        schema_version="quiz_background_prompt_plan_v1",
+        visual_summary="A light food quiz scene with an unobtrusive title banner.",
+        scene_concept=(
+            "A bright garden frames a calm central field for educational quiz "
+            "content while small food details remain near the outer edges."
+        ),
+        focal_elements=["Shallow title banner", "Calm garden", "Edge details"],
+        composition=(
+            "A wide landscape leaves open regions for a question and four answers."
+        ),
+        palette_and_lighting=(
+            "High-key pale colors, diffuse daylight, and restrained contrast."
+        ),
+        prompt=prompt,
+    )
+
+    _validate_prompt_plan(
+        plan,
+        display_title="FOOD QUIZ",
+        subtitle="",
+        layout="landscape",
+    )
 
 
 def test_landscape_validator_rejects_adventure_subtitle() -> None:
