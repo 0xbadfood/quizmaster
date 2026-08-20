@@ -75,8 +75,12 @@ def test_category_spec_has_background_selector_and_twenty_tiles(tmp_path: Path) 
         display_title="ANIMAL QUIZ",
         background_ready=True,
     )
-    assert len(document.assets) == 23
+    assert len(document.assets) == 24
     assert sum(asset.role == "quiz_tile" for asset in document.assets) == 20
+    portrait_video = next(
+        asset for asset in document.assets if asset.role == "video_background_portrait"
+    )
+    assert (portrait_video.output_width, portrait_video.output_height) == (1080, 1920)
     landscape = next(
         asset for asset in document.assets if asset.role == "video_background_landscape"
     )
@@ -118,6 +122,10 @@ def test_video_inventory_keeps_letters_and_progress_dynamic() -> None:
     assert inventory["category_assets"]["landscape_background"]["size"] == [
         1920,
         1080,
+    ]
+    assert inventory["category_assets"]["portrait_video_background"]["size"] == [
+        1080,
+        1920,
     ]
     assert inventory["dynamic_content"]["progress_text"] == (
         "QUESTION {current} OF {total}"

@@ -68,11 +68,17 @@ def build_category_image_spec(
     model: str = DEFAULT_OPENAI_IMAGE_MODEL,
     quality: str = "medium",
     background_ready: bool = False,
+    portrait_video_background_ready: bool | None = None,
     landscape_background_ready: bool | None = None,
 ) -> OpenAIImageSpecDocument:
     quiz_sets = _load_quiz_sets(category_root)
     category_slug = slugify(category)
     landscape_background = category_root / "assets/category/video_background_landscape.png"
+    portrait_video_background = (
+        category_root / "assets/category/video_background_portrait.png"
+    )
+    if portrait_video_background_ready is None:
+        portrait_video_background_ready = portrait_video_background.is_file()
     if landscape_background_ready is None:
         landscape_background_ready = landscape_background.is_file()
     assets = [
@@ -91,6 +97,25 @@ def build_category_image_spec(
             ),
             exact_text=[display_title],
             review_status="approved" if background_ready else "awaiting_upload",
+        ),
+        OpenAIImageAssetSpec(
+            asset_id=f"{category_slug}_video_background_portrait",
+            scope="category",
+            role="video_background_portrait",
+            source="user_upload",
+            output_width=1080,
+            output_height=1920,
+            background="opaque",
+            file="assets/category/video_background_portrait.png",
+            prompt=(
+                "Pipeline-generated 9:16 portrait video background with only the "
+                "embedded category title and light safe regions for progress, a "
+                "question panel, and a two-by-two answer grid."
+            ),
+            exact_text=[display_title],
+            review_status=(
+                "approved" if portrait_video_background_ready else "awaiting_upload"
+            ),
         ),
         OpenAIImageAssetSpec(
             asset_id=f"{category_slug}_video_background_landscape",
@@ -386,9 +411,13 @@ def build_video_presentation_inventory() -> dict[str, object]:
         "schema_version": "quiz_video_presentation_inventory_v1",
         "rendering": "remotion",
         "category_assets": {
-            "portrait_background": {
+            "app_background": {
                 "role": "runtime_background",
                 "size": [941, 1672],
+            },
+            "portrait_video_background": {
+                "role": "video_background_portrait",
+                "size": [1080, 1920],
             },
             "landscape_background": {
                 "role": "video_background_landscape",

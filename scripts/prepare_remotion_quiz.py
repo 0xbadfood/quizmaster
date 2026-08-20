@@ -62,7 +62,7 @@ def parse_question_selection(value: str, total: int = 10) -> list[int]:
     return sorted(selection)
 
 
-def _studio_landscape_background(category: str) -> Path | None:
+def _studio_video_background(category: str, role: str) -> Path | None:
     root = STUDIO_ROOT / category
     spec_path = root / "category-image-spec.json"
     manifest_path = root / "category-image-manifest.json"
@@ -74,7 +74,7 @@ def _studio_landscape_background(category: str) -> Path | None:
         (
             item
             for item in spec.get("assets", [])
-            if item.get("role") == "video_background_landscape"
+            if item.get("role") == role
         ),
         None,
     )
@@ -99,7 +99,7 @@ def _resolve_background(
 ) -> Path:
     presentation = category_document.get("presentation", {})
     key = (
-        "runtime_background"
+        "video_background_portrait"
         if orientation == "portrait"
         else "video_background_landscape"
     )
@@ -108,15 +108,15 @@ def _resolve_background(
         candidate = content / str(relative)
         if candidate.is_file():
             return candidate
-    if orientation == "landscape":
-        candidate = _studio_landscape_background(category)
-        if candidate is not None:
-            return candidate
-        raise ValueError(
-            "landscape background image is not available; generate it in "
-            f"Visuals for category '{category}' before creating a landscape video"
-        )
-    raise ValueError(f"portrait runtime background is missing for category '{category}'")
+    candidate = _studio_video_background(category, key)
+    if candidate is not None:
+        return candidate
+    label = "portrait" if orientation == "portrait" else "landscape"
+    raise ValueError(
+        f"{label} background image is not available; generate the {label} video "
+        "background in "
+        f"Visuals for category '{category}' before creating a {label} video"
+    )
 
 
 def _copy_presentation_assets(

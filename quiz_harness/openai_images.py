@@ -34,6 +34,7 @@ class OpenAIImageAssetSpec(StrictModel):
         "speaker_on",
         "speaker_muted",
         "progress_bar",
+        "video_background_portrait",
         "video_background_landscape",
         "video_progress_plaque",
         "video_question_frame",

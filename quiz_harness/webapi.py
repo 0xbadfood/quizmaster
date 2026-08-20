@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
 from fastapi import Cookie, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -1118,23 +1118,30 @@ async def upload_category_background(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@app.post(
-    "/api/studio/categories/{category_slug}/visuals/landscape-background"
-)
-def generate_landscape_background(
-    category_slug: str, payload: LandscapeBackgroundGenerationRequest
+def _start_video_background_generation(
+    category_slug: str,
+    payload: LandscapeBackgroundGenerationRequest,
+    *,
+    layout: Literal["video_portrait", "landscape"],
 ) -> dict[str, Any]:
+    portrait = layout == "video_portrait"
+    job_kind = (
+        "portrait_video_background_generation"
+        if portrait
+        else "landscape_background_generation"
+    )
+    label = "Portrait video" if portrait else "Landscape"
     active_jobs = [
         job
         for job in database.studio_jobs(limit=100)
-        if job["kind"] == "landscape_background_generation"
+        if job["kind"] == job_kind
         and job["status"] in {"queued", "running"}
         and job.get("context", {}).get("category_slug") == category_slug
     ]
     if active_jobs:
         raise HTTPException(
             status_code=409,
-            detail="Landscape background generation is already active for this category",
+            detail=f"{label} background generation is already active for this category",
         )
     try:
         category = database.studio_category(category_slug)
@@ -1178,13 +1185,22 @@ def generate_landscape_background(
     def target(progress: Callable[..., None]) -> dict[str, Any]:
         root = studio_visuals.category_root(category_slug)
         work = root / "background-generation"
-        plan_path = work / "video-background-landscape-prompt-plan.json"
+        plan_path = work / (
+            "video-background-portrait-prompt-plan.json"
+            if portrait
+            else "video-background-landscape-prompt-plan.json"
+        )
         guidance = "\n\n".join(
             value.strip()
             for value in (category.get("editorial_brief"), payload.guidance)
             if value and value.strip()
         )
-        progress("Planning 16:9 background", 0.08)
+        progress(
+            "Planning 9:16 portrait video background"
+            if portrait
+            else "Planning 16:9 landscape background",
+            0.08,
+        )
         planned = plan_quiz_background_prompt(
             category=category["name"],
             display_title=category["display_title"],
@@ -1197,21 +1213,31 @@ def generate_landscape_background(
             category_guidance=guidance or None,
             seed=payload.seed,
             force=payload.refresh_plan,
-            layout="landscape",
+            layout=layout,
         )
         plan_document = planned["plan"]
         planning = {
             **planned,
             "plan": plan_document.model_dump(mode="json"),
         }
-        progress("Rendering 1920x1080 background", 0.45)
+        progress(
+            "Rendering 1080x1920 background"
+            if portrait
+            else "Rendering 1920x1080 background",
+            0.45,
+        )
         generated = generate_quiz_background(
             category=category["name"],
             display_title=category["display_title"],
             provider_id=image_provider["id"],
             database_path=DATABASE_PATH,
             secret_key_file=SECRET_KEY_FILE,
-            output=work / "video_background_landscape.png",
+            output=work
+            / (
+                "video_background_portrait.png"
+                if portrait
+                else "video_background_landscape.png"
+            ),
             model_override=str(image_model),
             quality=payload.quality,
             seed=payload.seed,
@@ -1219,13 +1245,16 @@ def generate_landscape_background(
             prompt_override=plan_document.prompt,
             planning_metadata=planning,
             force=payload.force,
-            layout="landscape",
+            layout=layout,
         )
         progress("Registering optional video background", 0.92)
-        registered = studio_visuals.upload_video_background_landscape(
-            category,
-            Path(generated["image"]["file"]).read_bytes(),
-            "image/png",
+        uploader = (
+            studio_visuals.upload_video_background_portrait
+            if portrait
+            else studio_visuals.upload_video_background_landscape
+        )
+        registered = uploader(
+            category, Path(generated["image"]["file"]).read_bytes(), "image/png"
         )
         return {
             "status": "complete",
@@ -1236,7 +1265,7 @@ def generate_landscape_background(
         }
 
     return jobs.start(
-        "landscape_background_generation",
+        job_kind,
         target,
         context={
             "category_slug": category_slug,
@@ -1246,7 +1275,30 @@ def generate_landscape_background(
             "image_model": image_model,
             "quality": payload.quality,
             "seed": payload.seed,
+            "layout": layout,
         },
+    )
+
+
+@app.post(
+    "/api/studio/categories/{category_slug}/visuals/portrait-video-background"
+)
+def generate_portrait_video_background(
+    category_slug: str, payload: LandscapeBackgroundGenerationRequest
+) -> dict[str, Any]:
+    return _start_video_background_generation(
+        category_slug, payload, layout="video_portrait"
+    )
+
+
+@app.post(
+    "/api/studio/categories/{category_slug}/visuals/landscape-background"
+)
+def generate_landscape_background(
+    category_slug: str, payload: LandscapeBackgroundGenerationRequest
+) -> dict[str, Any]:
+    return _start_video_background_generation(
+        category_slug, payload, layout="landscape"
     )
 
 

@@ -546,8 +546,8 @@ function QuizSetSelectionDialog({ category, providers, summary, onClose, onQueue
   </form></section></div>
 }
 
-const BACKGROUND_VISUAL_ROLES = ['runtime_background', 'video_background_landscape']
-const VISUAL_ROLE_LABELS = { runtime_background: 'Portrait background', video_background_landscape: 'Landscape video background', category_selector: 'Category selector', quiz_tile: 'Quiz tile', answer_image: 'Answer image' }
+const BACKGROUND_VISUAL_ROLES = ['runtime_background', 'video_background_portrait', 'video_background_landscape']
+const VISUAL_ROLE_LABELS = { runtime_background: 'App background', video_background_portrait: 'Portrait video background', video_background_landscape: 'Landscape video background', category_selector: 'Category selector', quiz_tile: 'Quiz tile', answer_image: 'Answer image' }
 
 function VisualsWorkspace({ category, providers, onStage, onJob, refreshToken, onCategoryRefresh }) {
   const [payload, setPayload] = useState(null)
@@ -600,8 +600,9 @@ function VisualsWorkspace({ category, providers, onStage, onJob, refreshToken, o
         <div><p className="kicker">VISUAL LIBRARY</p><h1>{category.name}</h1></div>
         <div className="question-actions">
           {blockedReason && <span className="toolbar-gate"><CircleAlert size={14} />Prerequisites required</span>}
-          <label className={`button secondary upload-button ${blockedReason ? 'disabled' : ''}`}><Upload size={15} />Portrait<input disabled={Boolean(blockedReason)} type="file" accept="image/*" onChange={uploaded} /></label>
-          <button className="button secondary" disabled={Boolean(blockedReason)} onClick={() => setDialog('landscape')}><Image size={15} />Landscape</button>
+          <label className={`button secondary upload-button ${blockedReason ? 'disabled' : ''}`}><Upload size={15} />App background<input disabled={Boolean(blockedReason)} type="file" accept="image/*" onChange={uploaded} /></label>
+          <button className="button secondary" disabled={Boolean(blockedReason)} onClick={() => setDialog('portrait-video')}><Image size={15} />Portrait video</button>
+          <button className="button secondary" disabled={Boolean(blockedReason)} onClick={() => setDialog('landscape')}><Image size={15} />Landscape video</button>
           <button className="button secondary" disabled={Boolean(blockedReason)} onClick={() => setDialog('plan')}><Sparkles size={15} />Plan prompts</button>
           <button className="button primary" disabled={!checked.length} onClick={() => setDialog('generate')}><Image size={15} />Generate {checked.length || ''}</button>
         </div>
@@ -639,7 +640,8 @@ function VisualsWorkspace({ category, providers, onStage, onJob, refreshToken, o
     </section>
     <VisualInspector category={category} asset={selected} providers={providers} onChanged={async () => { await loadVisuals(selectedId); await onCategoryRefresh() }} onJob={onJob} onGenerate={() => { setChecked(selected ? [selected.asset_id] : []); setDialog('generate') }} />
     {dialog === 'plan' && <VisualPromptDialog category={category} providers={providers} current={payload?.prompt_plan} onClose={() => setDialog('')} onQueued={(job) => { setDialog(''); onJob(job) }} />}
-    {dialog === 'landscape' && <LandscapeBackgroundDialog category={category} providers={providers} asset={assets.find((item) => item.role === 'video_background_landscape')} onClose={() => setDialog('')} onQueued={(job) => { setDialog(''); onJob(job) }} />}
+    {dialog === 'portrait-video' && <VideoBackgroundDialog layout="portrait" category={category} providers={providers} asset={assets.find((item) => item.role === 'video_background_portrait')} onClose={() => setDialog('')} onQueued={(job) => { setDialog(''); onJob(job) }} />}
+    {dialog === 'landscape' && <VideoBackgroundDialog layout="landscape" category={category} providers={providers} asset={assets.find((item) => item.role === 'video_background_landscape')} onClose={() => setDialog('')} onQueued={(job) => { setDialog(''); onJob(job) }} />}
     {dialog === 'generate' && <VisualGenerateDialog category={category} providers={providers} assets={selectedAssets} onClose={() => setDialog('')} onQueued={(job) => { setDialog(''); setChecked([]); onJob(job) }} />}
   </div>
 }
@@ -668,7 +670,10 @@ function VisualInspector({ category, asset, onChanged, onGenerate }) {
   </aside>
 }
 
-function LandscapeBackgroundDialog({ category, providers, asset, onClose, onQueued }) {
+function VideoBackgroundDialog({ layout, category, providers, asset, onClose, onQueued }) {
+  const portrait = layout === 'portrait'
+  const endpoint = portrait ? 'portrait-video-background' : 'landscape-background'
+  const inputPrefix = portrait ? 'portrait-video' : 'landscape'
   const planners = providers.filter((provider) => provider.enabled && provider.provider_type === 'openai_compatible_llm')
   const imageProviders = providers.filter((provider) => provider.enabled && ['openai_images', 'imagestudio'].includes(provider.provider_type))
   const planner = planners[0]
@@ -692,11 +697,11 @@ function LandscapeBackgroundDialog({ category, providers, asset, onClose, onQueu
   function chooseImageProvider(id) { const item = imageProviders.find((candidate) => candidate.id === id); setForm({ ...form, image_provider_id: id, image_model: item?.default_model || item?.discovered_models?.[0] || '' }) }
   async function submit(event) {
     event.preventDefault(); setBusy(true); setError('')
-    try { onQueued(await post(`/api/studio/categories/${category.slug}/visuals/landscape-background`, { ...form, seed: Number(form.seed) })) } catch (requestError) { setError(requestError.message); setBusy(false) }
+    try { onQueued(await post(`/api/studio/categories/${category.slug}/visuals/${endpoint}`, { ...form, seed: Number(form.seed) })) } catch (requestError) { setError(requestError.message); setBusy(false) }
   }
-  return <div className="dialog-backdrop"><section className="dialog visual-dialog" role="dialog" aria-modal="true"><header><div><p className="kicker">VIDEO BACKGROUND</p><h2>{asset?.image_url ? 'Regenerate landscape background' : 'Generate landscape background'}</h2></div><button className="icon-button quiet" title="Close" onClick={onClose}><X size={18} /></button></header><form onSubmit={submit}>
-    <div className="dialog-grid"><label>Planner connection<select value={form.planner_provider_id} onChange={(event) => choosePlanner(event.target.value)}><option value="" disabled>Select a planner</option>{planners.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label>Planner model<input list="landscape-planner-models" value={form.planner_model} onChange={(event) => setForm({ ...form, planner_model: event.target.value })} /><datalist id="landscape-planner-models">{selectedPlanner?.discovered_models.map((model) => <option value={model} key={model} />)}</datalist></label></div>
-    <div className="dialog-grid"><label>Image provider<select value={form.image_provider_id} onChange={(event) => chooseImageProvider(event.target.value)}><option value="" disabled>Select an image provider</option>{imageProviders.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label>Image model<input list="landscape-image-models" value={form.image_model} onChange={(event) => setForm({ ...form, image_model: event.target.value })} /><datalist id="landscape-image-models">{selectedImageProvider?.discovered_models.map((model) => <option value={model} key={model} />)}</datalist></label></div>
+  return <div className="dialog-backdrop"><section className="dialog visual-dialog" role="dialog" aria-modal="true"><header><div><p className="kicker">VIDEO BACKGROUND</p><h2>{asset?.image_url ? `Regenerate ${layout} video background` : `Generate ${layout} video background`}</h2></div><button className="icon-button quiet" title="Close" onClick={onClose}><X size={18} /></button></header><form onSubmit={submit}>
+    <div className="dialog-grid"><label>Planner connection<select value={form.planner_provider_id} onChange={(event) => choosePlanner(event.target.value)}><option value="" disabled>Select a planner</option>{planners.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label>Planner model<input list={`${inputPrefix}-planner-models`} value={form.planner_model} onChange={(event) => setForm({ ...form, planner_model: event.target.value })} /><datalist id={`${inputPrefix}-planner-models`}>{selectedPlanner?.discovered_models.map((model) => <option value={model} key={model} />)}</datalist></label></div>
+    <div className="dialog-grid"><label>Image provider<select value={form.image_provider_id} onChange={(event) => chooseImageProvider(event.target.value)}><option value="" disabled>Select an image provider</option>{imageProviders.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label>Image model<input list={`${inputPrefix}-image-models`} value={form.image_model} onChange={(event) => setForm({ ...form, image_model: event.target.value })} /><datalist id={`${inputPrefix}-image-models`}>{selectedImageProvider?.discovered_models.map((model) => <option value={model} key={model} />)}</datalist></label></div>
     {selectedImageProvider?.provider_type === 'openai_images' && <label>Quality<select value={form.quality} onChange={(event) => setForm({ ...form, quality: event.target.value })}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="auto">Auto</option></select></label>}
     <label>Additional direction<textarea rows="4" placeholder="Optional category-specific art direction" value={form.guidance} onChange={(event) => setForm({ ...form, guidance: event.target.value })} /></label>
     <div className="dialog-grid"><label>Seed<input type="number" min="0" max="2147483647" value={form.seed} onChange={(event) => setForm({ ...form, seed: event.target.value })} /></label><div className="dialog-checks"><label className="check-field"><input type="checkbox" checked={form.refresh_plan} onChange={(event) => setForm({ ...form, refresh_plan: event.target.checked })} />Create a new prompt plan</label><label className="check-field"><input type="checkbox" checked={form.force} onChange={(event) => setForm({ ...form, force: event.target.checked })} />Render a new image</label></div></div>

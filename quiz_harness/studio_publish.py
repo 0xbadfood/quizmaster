@@ -192,8 +192,18 @@ class StudioPublishStore:
             asset
             for asset in spec_assets
             if isinstance(asset, dict)
-            and asset.get("role") != "video_background_landscape"
+            and asset.get("role")
+            not in {"video_background_portrait", "video_background_landscape"}
         ]
+        portrait_video_spec = next(
+            (
+                asset
+                for asset in spec_assets
+                if isinstance(asset, dict)
+                and asset.get("role") == "video_background_portrait"
+            ),
+            None,
+        )
         landscape_spec = next(
             (
                 asset
@@ -216,6 +226,14 @@ class StudioPublishStore:
                 pending_review += record.get("status") == "generated_pending_review"
         if pending_review:
             warnings.append(f"{pending_review} category visuals are awaiting review")
+        if isinstance(portrait_video_spec, dict):
+            portrait_video_file = root / str(
+                portrait_video_spec.get("file") or ""
+            )
+            if not portrait_video_file.is_file():
+                warnings.append(
+                    "Optional portrait video background has not been generated"
+                )
         if isinstance(landscape_spec, dict):
             landscape_file = root / str(landscape_spec.get("file") or "")
             if not landscape_file.is_file():

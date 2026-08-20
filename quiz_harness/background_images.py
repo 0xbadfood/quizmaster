@@ -23,20 +23,24 @@ from .secure_store import SecretStore
 from .visual_bank import slugify
 
 
-BackgroundLayout = Literal["portrait", "landscape"]
+BackgroundLayout = Literal["portrait", "video_portrait", "landscape"]
 
 BACKGROUND_SIZE = (941, 1672)
+PORTRAIT_VIDEO_BACKGROUND_SIZE = (1080, 1920)
 LANDSCAPE_BACKGROUND_SIZE = (1920, 1080)
 BACKGROUND_SIZES: dict[BackgroundLayout, tuple[int, int]] = {
     "portrait": BACKGROUND_SIZE,
+    "video_portrait": PORTRAIT_VIDEO_BACKGROUND_SIZE,
     "landscape": LANDSCAPE_BACKGROUND_SIZE,
 }
 OPENAI_REQUEST_SIZES: dict[BackgroundLayout, str] = {
     "portrait": "1024x1536",
+    "video_portrait": "1024x1536",
     "landscape": "1536x1024",
 }
 IMAGESTUDIO_REQUEST_SIZES: dict[BackgroundLayout, tuple[int, int]] = {
     "portrait": (768, 1344),
+    "video_portrait": (768, 1344),
     "landscape": (1344, 768),
 }
 SUPPORTED_PROVIDER_TYPES = {"openai_images", "imagestudio"}
@@ -88,6 +92,24 @@ def build_background_planning_prompt(
   or other focal subjects behind the question and answer safe regions.
 - Keep all critical content inside a centered 16:9 crop with expendable scenery at
   the extreme top and bottom because some providers return a wider 3:2 source."""
+        subtitle_requirement = "Subtitle: omit it entirely; render no subtitle or ribbon."
+        allowed_text = "the exact main title"
+    elif layout == "video_portrait":
+        production_contract = """- The normalized video asset is exactly 1080x1920 pixels in a true 9:16 portrait composition.
+- TITLE-ONLY HEADER: render only the main title inside one shallow banner near the
+  top. Do not add a subtitle or ribbon. Keep y=0% to y=7% calm and clear for the
+  progress indicator. Fit the complete title banner inside y=8% to y=19%, centered
+  within roughly 84 percent of the frame width. No border or letter may touch an edge.
+- Keep y=21% to y=55% calm and open for one large question panel.
+- Keep y=56% to y=98% calm and open for four answer panels in a two-by-two grid.
+- Outside the shallow header, use a high-key, light-toned, low-contrast background:
+  pale sky colors, soft cool neutrals, restrained pastels, and diffuse daylight.
+  Avoid dominant navy, black, saturated neon, dramatic contrast, heavy vignettes,
+  bright central glows, and busy textures so the quiz panels remain the focal point.
+- Keep category storytelling small, subtle, and mainly at the outer edges, corners,
+  or distant background. Do not place large focal subjects behind the quiz regions.
+- Keep all critical content inside a centered 9:16 crop with expendable scenery at
+  the extreme top and bottom because providers may return a wider source image."""
         subtitle_requirement = "Subtitle: omit it entirely; render no subtitle or ribbon."
         allowed_text = "the exact main title"
     else:
@@ -144,7 +166,9 @@ def _validate_prompt_plan(
         ).casefold().split()
     )
     required_text = (
-        (display_title,) if layout == "landscape" else (display_title, subtitle)
+        (display_title,)
+        if layout in {"landscape", "video_portrait"}
+        else (display_title, subtitle)
     )
     missing = [value for value in required_text if value.casefold() not in folded]
     if missing:
@@ -155,12 +179,13 @@ def _validate_prompt_plan(
     named_style = next((name for name in banned if name in folded), None)
     if named_style:
         raise ValueError(f"background prompt names copyrighted style: {named_style}")
-    if layout == "landscape":
+    if layout in {"landscape", "video_portrait"}:
         forbidden_subtitles = {
             value.casefold() for value in (subtitle, "ADVENTURE") if value
         }
         if any(value in folded for value in forbidden_subtitles):
-            raise ValueError("landscape background prompt must omit the subtitle")
+            raise ValueError("video background prompt must omit the subtitle")
+    if layout == "landscape":
         landscape = "landscape" in folded_compact or any(
             marker in folded_compact
             for marker in ("16:9", "1920x1080", "wide screen")
@@ -212,6 +237,54 @@ def _validate_prompt_plan(
         if not answer_row:
             raise ValueError(
                 "landscape background prompt must reserve one row of four answers"
+            )
+    elif layout == "video_portrait":
+        portrait_video = "portrait" in folded_compact and any(
+            marker in folded_compact
+            for marker in ("9:16", "1080x1920", "vertical video")
+        )
+        if not portrait_video:
+            raise ValueError(
+                "portrait video background prompt must request a 9:16 composition"
+            )
+        shallow_header = "banner" in folded_compact and bool(
+            re.search(
+                r"(?:y\s*=\s*)?8\s*(?:%|percent)\s*"
+                r"(?:to|through|and|-)\s*"
+                r"(?:y\s*=\s*)?(?:19|20)\s*(?:%|percent)",
+                folded_compact,
+            )
+        )
+        if not shallow_header:
+            raise ValueError(
+                "portrait video background prompt must confine the title banner to y=8%-20%"
+            )
+        light_field = any(
+            marker in semantic_compact
+            for marker in ("high-key", "light-toned", "pale", "soft pastel")
+        ) and any(
+            marker in semantic_compact
+            for marker in (
+                "low-contrast",
+                "low contrast",
+                "restrained contrast",
+                "soft focus",
+                "soft-focus",
+                "blurred background",
+                "minimal shadows",
+            )
+        )
+        if not light_field:
+            raise ValueError(
+                "portrait video background prompt must request a light, low-contrast content field"
+            )
+        answer_grid = any(
+            marker in folded_compact
+            for marker in ("two-by-two", "two by two", "2x2", "two rows")
+        )
+        if not answer_grid:
+            raise ValueError(
+                "portrait video background prompt must reserve a two-by-two answer grid"
             )
     else:
         vertical_mobile = "vertical" in folded and any(
@@ -501,6 +574,23 @@ crisp but unobtrusive edge details."""
 Main title: "{display_title}"
 
 Do not render a subtitle or subtitle ribbon.'''
+    elif layout == "video_portrait":
+        layout_direction = """The final image is a true 9:16 portrait video background at 1080x1920. Render
+only the exact main title inside one shallow banner. Keep y=0% to y=7% calm and
+clear for progress, and fit the entire title banner inside y=8% to y=19%, centered
+within roughly 84 percent of the frame width. Render no subtitle and no subtitle
+ribbon. Keep y=21% to y=55% open for a wide question panel and y=56% to y=98%
+open for four answer panels in a two-by-two grid. Use a high-key, light-toned,
+low-contrast field with pale sky colors, soft cool neutrals, restrained pastels, and
+diffuse daylight. Keep supporting scenery small and subtle at the outer edges and
+corners, away from the question and answer safe regions."""
+        style_direction = """Use a polished family-friendly 3D animated illustration
+aesthetic with clean soft depth, restrained color, diffuse high-key lighting, and
+crisp but unobtrusive edge details."""
+        text_elements = f'''Render exactly one text element and spell it exactly:
+Main title: "{display_title}"
+
+Do not render a subtitle or subtitle ribbon.'''
     else:
         layout_direction = """The final image fills a tall mobile screen. Reserve the top 28 percent for the
 title and keep the middle calmer and lower-contrast for Flutter question and answer
@@ -710,7 +800,7 @@ def generate_quiz_background(
         )
 
     model = _model(provider, model_override)
-    effective_subtitle = "" if layout == "landscape" else subtitle
+    effective_subtitle = "" if layout in {"landscape", "video_portrait"} else subtitle
     prompt = prompt_override.strip() if prompt_override else build_background_prompt(
         category=category,
         display_title=display_title,

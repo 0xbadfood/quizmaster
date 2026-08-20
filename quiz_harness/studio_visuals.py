@@ -45,10 +45,18 @@ from .visual_bank import (
 
 
 VISUAL_WRITE_LOCK = threading.Lock()
-BACKGROUND_ROLES = {"runtime_background", "video_background_landscape"}
-OPTIONAL_VISUAL_ROLES = {"video_background_landscape"}
+BACKGROUND_ROLES = {
+    "runtime_background",
+    "video_background_portrait",
+    "video_background_landscape",
+}
+OPTIONAL_VISUAL_ROLES = {
+    "video_background_portrait",
+    "video_background_landscape",
+}
 VISUAL_ROLES = (
     "runtime_background",
+    "video_background_portrait",
     "video_background_landscape",
     "category_selector",
     "quiz_tile",
@@ -412,22 +420,10 @@ class StudioVisualStore:
     def inventory(self, category: dict[str, Any]) -> dict[str, Any]:
         root = self.category_root(category["slug"])
         try:
-            catalog = self._catalog(category, persist=False)
+            catalog, spec = self.prepare(category)
         except StudioVisualError as exc:
             return self.blocked_inventory(str(exc))
         spec_path = root / "category-image-spec.json"
-        spec = (
-            OpenAIImageSpecDocument.model_validate_json(
-                spec_path.read_text(encoding="utf-8")
-            )
-            if spec_path.exists()
-            else build_category_image_spec(
-                category=category["name"],
-                category_root=root,
-                display_title=category["display_title"],
-                background_ready=(root / "assets/category/runtime_background.png").exists(),
-            )
-        )
         if any(_is_legacy_animal_fallback(item.prompt) for item in spec.assets):
             proposed = build_category_image_spec(
                 category=category["name"],
@@ -711,6 +707,13 @@ class StudioVisualStore:
     ) -> dict[str, Any]:
         return self._upload_background_role(
             category, data, content_type, role="video_background_landscape"
+        )
+
+    def upload_video_background_portrait(
+        self, category: dict[str, Any], data: bytes, content_type: str
+    ) -> dict[str, Any]:
+        return self._upload_background_role(
+            category, data, content_type, role="video_background_portrait"
         )
 
     def _upload_background_role(

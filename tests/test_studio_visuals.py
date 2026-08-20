@@ -73,7 +73,8 @@ def visual_fixture(tmp_path: Path) -> tuple[StudioVisualStore, dict, Path]:
 def test_visual_inventory_uses_actual_sets_and_allocated_choices(tmp_path: Path) -> None:
     store, category, category_root = visual_fixture(tmp_path)
     catalog, spec = store.prepare(category)
-    assert len(spec.assets) == 5
+    assert len(spec.assets) == 6
+    assert any(item.role == "video_background_portrait" for item in spec.assets)
     assert any(item.role == "video_background_landscape" for item in spec.assets)
     assert [item.asset_id for item in spec.assets if item.role == "quiz_tile"] == [
         "tile_beginner_01",

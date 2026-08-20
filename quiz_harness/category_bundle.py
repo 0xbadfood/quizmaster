@@ -207,7 +207,8 @@ def _build_payload(
     for asset_id, asset in category_assets.items():
         if (
             asset_id not in category_manifest.get("assets", {})
-            and asset.get("role") != "video_background_landscape"
+            and asset.get("role")
+            not in {"video_background_portrait", "video_background_landscape"}
         ):
             raise ValueError(f"category asset has no manifest record: {asset_id}")
     for asset_id in global_assets:
@@ -223,6 +224,16 @@ def _build_payload(
     landscape_background_id = _optional_category_asset_id(
         category_assets, role="video_background_landscape"
     )
+    portrait_video_background_id = _optional_category_asset_id(
+        category_assets, role="video_background_portrait"
+    )
+    if portrait_video_background_id and (
+        portrait_video_background_id not in category_manifest.get("assets", {})
+        or not (
+            category_root / category_assets[portrait_video_background_id]["file"]
+        ).is_file()
+    ):
+        portrait_video_background_id = None
     if landscape_background_id and (
         landscape_background_id not in category_manifest.get("assets", {})
         or not (category_root / category_assets[landscape_background_id]["file"]).is_file()
@@ -233,6 +244,11 @@ def _build_payload(
     for asset_id in (
         background_id,
         selector_id,
+        *(
+            [portrait_video_background_id]
+            if portrait_video_background_id
+            else []
+        ),
         *([landscape_background_id] if landscape_background_id else []),
     ):
         spec = category_assets[asset_id]
@@ -375,6 +391,15 @@ def _build_payload(
         },
         "presentation": {
             "runtime_background": presentation_files[background_id],
+            **(
+                {
+                    "video_background_portrait": presentation_files[
+                        portrait_video_background_id
+                    ]
+                }
+                if portrait_video_background_id
+                else {}
+            ),
             **(
                 {
                     "video_background_landscape": presentation_files[

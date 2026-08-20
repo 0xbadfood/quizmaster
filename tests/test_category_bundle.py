@@ -176,12 +176,19 @@ def test_build_resolves_multiword_category_assets_by_role(tmp_path: Path) -> Non
     )
 
 
-def test_missing_optional_landscape_background_does_not_block_bundle(
+def test_missing_optional_video_backgrounds_do_not_block_bundle(
     tmp_path: Path,
 ) -> None:
     category_root, global_root = _source_tree(tmp_path / "source")
     spec_path = category_root / "category-image-spec.json"
     spec = json.loads(spec_path.read_text())
+    spec["assets"].append(
+        {
+            "asset_id": "animals_video_background_portrait",
+            "role": "video_background_portrait",
+            "file": "assets/category/video_background_portrait.png",
+        }
+    )
     spec["assets"].append(
         {
             "asset_id": "animals_video_background_landscape",
@@ -202,7 +209,42 @@ def test_missing_optional_landscape_background_does_not_block_bundle(
 
     content = tmp_path / "dist/animals/versions/000001/content"
     category = json.loads((content / "category.json").read_text())
+    assert "video_background_portrait" not in category["presentation"]
     assert "video_background_landscape" not in category["presentation"]
+
+
+def test_available_portrait_video_background_is_published(tmp_path: Path) -> None:
+    category_root, global_root = _source_tree(tmp_path / "source")
+    asset = {
+        "asset_id": "animals_video_background_portrait",
+        "role": "video_background_portrait",
+        "file": "assets/category/video_background_portrait.png",
+    }
+    spec_path = category_root / "category-image-spec.json"
+    spec = json.loads(spec_path.read_text())
+    spec["assets"].append(asset)
+    _write_json(spec_path, spec)
+    source = category_root / asset["file"]
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_bytes(b"portrait-video")
+    manifest_path = category_root / "category-image-manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["assets"][asset["asset_id"]] = {"status": "approved"}
+    _write_json(manifest_path, manifest)
+
+    build_category_bundle(
+        category="Animals",
+        category_root=category_root,
+        global_root=global_root,
+        output_root=tmp_path / "dist",
+        display_title="ANIMAL QUIZ",
+        display_tag="Animals",
+    )
+
+    content = tmp_path / "dist/animals/versions/000001/content"
+    category = json.loads((content / "category.json").read_text())
+    relative = category["presentation"]["video_background_portrait"]
+    assert (content / relative).read_bytes() == b"portrait-video"
 
 
 def test_build_reuses_unchanged_content_and_can_activate_old_version(tmp_path: Path) -> None:

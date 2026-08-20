@@ -11,6 +11,7 @@ from quiz_harness.background_images import (
     BACKGROUND_SIZE,
     BackgroundPromptPlan,
     LANDSCAPE_BACKGROUND_SIZE,
+    PORTRAIT_VIDEO_BACKGROUND_SIZE,
     _parse_prompt_plan,
     _validate_prompt_plan,
     build_background_planning_prompt,
@@ -196,6 +197,53 @@ def test_normalize_background_writes_landscape_video_dimensions(tmp_path: Path) 
     with Image.open(output) as generated:
         assert generated.size == LANDSCAPE_BACKGROUND_SIZE
     assert (result["width"], result["height"]) == LANDSCAPE_BACKGROUND_SIZE
+
+
+def test_normalize_background_writes_portrait_video_dimensions(tmp_path: Path) -> None:
+    source = Image.new("RGB", (800, 1200), (120, 190, 220))
+    payload = io.BytesIO()
+    source.save(payload, format="PNG")
+    output = tmp_path / "video_background_portrait.png"
+
+    result = normalize_background(payload.getvalue(), output, layout="video_portrait")
+
+    with Image.open(output) as generated:
+        assert generated.size == PORTRAIT_VIDEO_BACKGROUND_SIZE
+    assert (result["width"], result["height"]) == PORTRAIT_VIDEO_BACKGROUND_SIZE
+
+
+def test_qwen_portrait_video_prompt_defines_title_only_safe_areas() -> None:
+    prompt = build_background_planning_prompt(
+        category="Food",
+        display_title="FOOD QUIZ",
+        subtitle="ADVENTURE",
+        layout="video_portrait",
+    )
+
+    assert "1080x1920" in prompt
+    assert "true 9:16 portrait" in prompt
+    assert "TITLE-ONLY HEADER" in prompt
+    assert "y=8% to y=19%" in prompt
+    assert "two-by-two grid" in prompt
+    assert "high-key, light-toned, low-contrast" in prompt
+    assert "ADVENTURE" not in prompt
+
+
+def test_direct_portrait_video_prompt_uses_light_title_only_layout() -> None:
+    prompt = build_background_prompt(
+        category="Food",
+        display_title="FOOD QUIZ",
+        subtitle="ADVENTURE",
+        layout="video_portrait",
+    )
+    compact = " ".join(prompt.split())
+
+    assert "true 9:16 portrait video background" in compact
+    assert "y=8% to y=19%" in compact
+    assert "y=21% to y=55%" in compact
+    assert "two-by-two grid" in compact
+    assert "high-key, light-toned, low-contrast" in compact
+    assert "ADVENTURE" not in compact
 
 
 def test_qwen_landscape_prompt_defines_video_safe_areas() -> None:

@@ -33,7 +33,9 @@ def main() -> int:
     parser.add_argument("--display-title")
     parser.add_argument("--subtitle", default="ADVENTURE")
     parser.add_argument(
-        "--layout", choices=("portrait", "landscape"), default="portrait"
+        "--layout",
+        choices=("portrait", "video_portrait", "landscape"),
+        default="portrait",
     )
     parser.add_argument(
         "--provider",
@@ -71,15 +73,21 @@ def main() -> int:
     args = parser.parse_args()
 
     display_title = (args.display_title or f"{args.category} QUIZ").strip().upper()
-    subtitle = "" if args.layout == "landscape" else args.subtitle.strip().upper()
+    subtitle = (
+        ""
+        if args.layout in {"video_portrait", "landscape"}
+        else args.subtitle.strip().upper()
+    )
     output = args.output or (
         Path("background_previews")
         / _slug(args.category)
         / _slug(args.provider)
         / (
-            "runtime_background.png"
-            if args.layout == "portrait"
-            else "video_background_landscape.png"
+            {
+                "portrait": "runtime_background.png",
+                "video_portrait": "video_background_portrait.png",
+                "landscape": "video_background_landscape.png",
+            }[args.layout]
         )
     )
     plan_output = args.plan_output or (
