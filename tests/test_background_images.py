@@ -12,6 +12,7 @@ from quiz_harness.background_images import (
     BackgroundPromptPlan,
     LANDSCAPE_BACKGROUND_SIZE,
     PORTRAIT_VIDEO_BACKGROUND_SIZE,
+    _apply_video_prompt_contract,
     _parse_prompt_plan,
     _validate_prompt_plan,
     build_background_planning_prompt,
@@ -380,6 +381,48 @@ def test_portrait_video_validator_accepts_four_answer_boxes_wording() -> None:
     _validate_prompt_plan(
         plan,
         display_title="FOOD QUIZ",
+        subtitle="",
+        layout="video_portrait",
+    )
+
+
+def test_portrait_video_contract_accepts_vertical_9_16_and_fills_fixed_zones() -> None:
+    plan = BackgroundPromptPlan(
+        schema_version="quiz_background_prompt_plan_v1",
+        visual_summary="A bright pastel space scene for a children's quiz background.",
+        scene_concept=(
+            "Soft planets and faint nebula clouds frame a large calm central field "
+            "without obstructing the educational quiz content."
+        ),
+        focal_elements=["Pastel Saturn", "Soft Earth", "Faint nebula clouds"],
+        composition=(
+            "A vertical composition places a shallow title near the top and keeps "
+            "the central field open for the quiz."
+        ),
+        palette_and_lighting=(
+            "High-key pale lavender and mint colors with low contrast diffuse light."
+        ),
+        prompt=(
+            "Create a vertical 9:16 (1080x1920) family-friendly 3D animated space "
+            "background with the exact title SPACE QUIZ in a shallow banner from "
+            "y=8% to y=19%. Use high-key pale colors and low-contrast soft focus. "
+            "Keep the middle open for a question and the lower region calm for "
+            "answer panels. Include no subtitle, logo, watermark, border, interface "
+            "controls, or other text. Frame the scene with small pastel planets and "
+            "faint nebula clouds near the outer edges while preserving generous "
+            "negative space for readable educational quiz content."
+        ),
+    )
+
+    contracted = _apply_video_prompt_contract(
+        plan, display_title="SPACE QUIZ", layout="video_portrait"
+    )
+
+    assert "MANDATORY FINAL VIDEO CONTRACT" in contracted.prompt
+    assert "two-by-two grid" in contracted.prompt
+    _validate_prompt_plan(
+        contracted,
+        display_title="SPACE QUIZ",
         subtitle="",
         layout="video_portrait",
     )

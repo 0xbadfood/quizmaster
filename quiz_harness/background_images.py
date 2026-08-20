@@ -239,7 +239,9 @@ def _validate_prompt_plan(
                 "landscape background prompt must reserve one row of four answers"
             )
     elif layout == "video_portrait":
-        portrait_video = "portrait" in folded_compact and any(
+        portrait_video = any(
+            marker in folded_compact for marker in ("portrait", "vertical")
+        ) and any(
             marker in folded_compact
             for marker in ("9:16", "1080x1920", "vertical video")
         )
@@ -312,6 +314,39 @@ def _compact_text(value: str, limit: int) -> str:
         return value
     shortened = value[: limit - 3].rsplit(" ", 1)[0].rstrip(" ,;:.-")
     return f"{shortened}..."
+
+
+def _apply_video_prompt_contract(
+    plan: BackgroundPromptPlan,
+    *,
+    display_title: str,
+    layout: BackgroundLayout,
+) -> BackgroundPromptPlan:
+    if layout not in {"video_portrait", "landscape"}:
+        return plan
+    marker = "MANDATORY FINAL VIDEO CONTRACT"
+    if marker.casefold() in plan.prompt.casefold():
+        return plan
+    if layout == "video_portrait":
+        contract = f"""{marker} (overrides conflicting layout directions above):
+Render a true 9:16 portrait composition normalized to 1080x1920. Keep y=0%-7%
+clear. Put one shallow banner containing only the exact text '{display_title}'
+inside y=8%-20%; no subtitle or ribbon. Keep y=21%-55% calm and open for one
+question panel. Keep y=56%-98% calm and open for four answer panels in a
+two-by-two grid. Use a high-key, light-toned, low-contrast field with small
+category details only at the outer edges. Render no UI controls or other text."""
+    else:
+        contract = f"""{marker} (overrides conflicting layout directions above):
+Render a true 16:9 landscape composition normalized to 1920x1080. Put one
+shallow banner containing only the exact text '{display_title}' inside y=6%-20%;
+no subtitle or ribbon. Keep y=20%-52% calm and open for one wide question panel.
+Keep y=52%-96% calm and open for four horizontal answer panels in a single row
+of four. Use a high-key, light-toned, low-contrast field with small category
+details only at the outer edges. Render no UI controls or other text."""
+    separator = "\n\n"
+    prompt_limit = 3500 - len(separator) - len(contract)
+    prompt = _compact_text(plan.prompt, prompt_limit) + separator + contract
+    return plan.model_copy(update={"prompt": prompt})
 
 
 def _normalize_focal_elements(
@@ -432,6 +467,9 @@ def plan_quiz_background_prompt(
             cached = BackgroundPromptPlan.model_validate_json(
                 output.read_text(encoding="utf-8")
             )
+            cached = _apply_video_prompt_contract(
+                cached, display_title=display_title, layout=layout
+            )
             _validate_prompt_plan(
                 cached,
                 display_title=display_title,
@@ -453,6 +491,9 @@ def plan_quiz_background_prompt(
         for raw_path in sorted(output.parent.glob(pattern), reverse=True):
             try:
                 recovered = _parse_prompt_plan(raw_path.read_text(encoding="utf-8"))
+                recovered = _apply_video_prompt_contract(
+                    recovered, display_title=display_title, layout=layout
+                )
                 _validate_prompt_plan(
                     recovered,
                     display_title=display_title,
@@ -512,6 +553,9 @@ def plan_quiz_background_prompt(
                     raw, encoding="utf-8"
                 )
                 plan = _parse_prompt_plan(raw)
+                plan = _apply_video_prompt_contract(
+                    plan, display_title=display_title, layout=layout
+                )
                 _validate_prompt_plan(
                     plan,
                     display_title=display_title,
