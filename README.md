@@ -297,6 +297,19 @@ python3 -m quiz_harness questions-audit --category Animals
 The JSON report distinguishes likely duplicates from exact topic-key collisions and
 is written to `question_sets/<category>/audit.json`.
 
+Experimentally ask the configured OpenAI-compatible local LLM to discover semantic
+duplicates across an entire visual question bank:
+
+```bash
+python3 scripts/discover_question_duplicates.py \
+  --category largest --timeout 900
+```
+
+This command is diagnostic only: it never edits a bank. Prompt, raw response,
+validated clusters, a Markdown review report, total response time, and per-attempt
+timings are retained under `experiments/question-dedup/<category>/`. Candidate
+clusters must use known IDs, cannot overlap, and must have matching correct answers.
+
 ## Visual quiz v1
 
 The visual v1 workflow uses OpenAI to create a large four-choice source bank, then

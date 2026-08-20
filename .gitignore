@@ -37,3 +37,6 @@ data/assets/**
 /video_renderer/node_modules/
 /video_renderer/public/quiz/
 /video_renderer/output/
+
+# Local LLM experiment prompts and responses
+/experiments/question-dedup/
