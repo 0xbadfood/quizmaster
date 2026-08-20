@@ -504,7 +504,7 @@ h1, h2, h3, p { margin-top: 0; }
 .video-name .youtube-state.failed { color: var(--red); }
 .video-row-action { display: grid; place-items: center; color: var(--green); }
 .video-create-dialog { width: min(820px, 100%); }
-.video-create-dialog form { gap: 14px; }
+.video-create-dialog form { max-height: calc(100vh - 120px); gap: 14px; overflow-y: auto; }
 .video-orientation-options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .video-orientation-options > button { min-height: 64px; display: grid; grid-template-columns: 26px minmax(0, 1fr) 18px; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; text-align: left; }
 .video-orientation-options > button:hover:not(:disabled) { border-color: #8eaa9c; background: var(--surface-soft); }
@@ -532,6 +532,24 @@ h1, h2, h3, p { margin-top: 0; }
 .video-set-group > button small { color: var(--muted); font-size: 8px; }
 .video-checkbox { width: 19px; height: 19px; display: grid; place-items: center; border: 1px solid var(--line-strong); border-radius: 4px; color: white; background: white; }
 .video-set-group > button.selected .video-checkbox { border-color: var(--green); background: var(--green); }
+.video-set-list.portrait { max-height: 210px; }
+.portrait-question-picker { border: 1px solid var(--line); }
+.portrait-question-picker > header { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border-bottom: 1px solid var(--line); background: #f7f9f8; }
+.portrait-question-picker > header > div:first-child { min-width: 0; display: grid; gap: 3px; }
+.portrait-question-picker > header strong { font-size: 10px; }
+.portrait-question-picker > header small { overflow: hidden; color: var(--muted); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.portrait-question-picker > header > div:last-child { display: flex; gap: 5px; }
+.portrait-question-picker > header button { min-height: 27px; padding: 4px 8px; border: 1px solid var(--line-strong); border-radius: 4px; color: var(--green-dark); background: white; font-size: 8px; font-weight: 850; }
+.portrait-question-picker > header button:hover { background: var(--green-soft); }
+.portrait-question-picker > div { max-height: 260px; overflow-y: auto; }
+.portrait-question-picker > div > button { width: 100%; min-height: 62px; display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: center; gap: 9px; padding: 8px 10px; border-bottom: 1px solid #e8ecea; text-align: left; }
+.portrait-question-picker > div > button:last-child { border-bottom: 0; }
+.portrait-question-picker > div > button:hover { background: var(--surface-soft); }
+.portrait-question-picker > div > button.selected { background: var(--green-soft); }
+.portrait-question-picker > div > button > span:last-child { min-width: 0; display: grid; gap: 3px; }
+.portrait-question-picker > div > button strong { font-size: 9px; }
+.portrait-question-picker > div > button small { display: -webkit-box; overflow: hidden; color: var(--muted); font-size: 9px; line-height: 1.35; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.portrait-question-picker > div > button.selected .video-checkbox { border-color: var(--green); color: white; background: var(--green); }
 .video-preview-dialog { width: min(900px, 100%); }
 .video-preview-body { display: grid; gap: 14px; padding: 18px; }
 .video-preview-body video { width: 100%; max-height: 62vh; aspect-ratio: 16 / 9; border-radius: 6px; object-fit: contain; background: #111714; }

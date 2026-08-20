@@ -485,6 +485,14 @@ Quiz Studio's managed provider storage. The default Amit transcript is: "Mumbai 
 the financial, commercial and the entertainment capital of India. It is also one of
 the world's top ten centres of commerce in terms of global financial flow."
 
+### Video Studio selection
+
+Landscape renders select one to five complete quiz sets, up to 50 questions.
+Portrait renders select one deployed set and then any 1-10 individual questions
+from that set. Partial portrait renders retain their source question numbers in
+history while the rendered progress indicator is renumbered from `1` through the
+selected question count.
+
 ### Landscape video intro
 
 Place ordered source clips named `quiz_intro_*.mp4` (the legacy `quiz_into_*.mp4`

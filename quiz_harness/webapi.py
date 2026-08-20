@@ -432,6 +432,9 @@ class ActivateReleaseRequest(BaseModel):
 class VideoCreationRequest(BaseModel):
     orientation: Literal["portrait", "landscape"]
     set_ids: list[str] = Field(min_length=1, max_length=5)
+    question_numbers: list[int] | None = Field(
+        default=None, min_length=1, max_length=10
+    )
     concurrency: int = Field(default=8, ge=1, le=16)
     crf: int = Field(default=18, ge=1, le=51)
 
@@ -1678,6 +1681,7 @@ def create_category_video(
             category_slug=category_slug,
             orientation=payload.orientation,
             set_ids=payload.set_ids,
+            question_numbers=payload.question_numbers,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Category not found") from exc

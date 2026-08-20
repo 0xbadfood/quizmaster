@@ -299,7 +299,11 @@ def deployed_video_questions(
         if record is None:
             raise YouTubePublishError(f"published quiz set is missing: {set_id}")
         quiz = json.loads((content / record["questions_file"]).read_text(encoding="utf-8"))
-        for question in quiz.get("questions", []):
+        selected_numbers = selection.get("question_numbers")
+        allowed = set(selected_numbers) if selected_numbers else None
+        for question_number, question in enumerate(quiz.get("questions", []), start=1):
+            if allowed is not None and question_number not in allowed:
+                continue
             correct_id = question.get("correct_choice_id")
             answer = next(
                 (

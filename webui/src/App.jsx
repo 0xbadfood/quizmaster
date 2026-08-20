@@ -1025,6 +1025,11 @@ function formatDuration(value) {
   return `${minutes}:${String(seconds % 60).padStart(2, '0')}`
 }
 
+function videoSelectionLabel(item) {
+  const title = item.title || `Set ${item.number}`
+  return item.question_numbers?.length ? `${title} · Q${item.question_numbers.join(', ')}` : title
+}
+
 function VideoWorkspace({ category, providers, onStage, onJob, refreshToken }) {
   const [payload, setPayload] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -1080,7 +1085,7 @@ function VideoWorkspace({ category, providers, onStage, onJob, refreshToken }) {
           <div className="video-table-head"><span>Video</span><span>Source sets</span><span>Runtime</span><span>Created</span><span>Status</span><span /></div>
           {videos.map((video) => <button className="video-row" key={video.id} onClick={() => setDialog({ type: 'preview', video })}>
             <span className="video-primary"><span className={`video-format ${video.orientation}`}>{video.orientation === 'landscape' ? <Monitor size={18} /> : <Smartphone size={18} />}</span><span className="video-name"><strong>{video.title}</strong><small>{video.orientation} · {video.question_count} questions · bundle v{video.bundle_version}</small>{video.youtube_upload && <small className={`youtube-state ${video.youtube_upload.status}`}><Youtube size={10} />{video.youtube_upload.status === 'complete' ? 'Published on YouTube' : `YouTube ${video.youtube_upload.status}`}</small>}</span></span>
-            <span><strong>{video.selections.map((item) => item.title || `Set ${item.number}`).join(', ')}</strong><small>{video.selections.length} set{video.selections.length === 1 ? '' : 's'}</small></span>
+            <span><strong>{video.selections.map(videoSelectionLabel).join(', ')}</strong><small>{video.selections.length} set{video.selections.length === 1 ? '' : 's'}</small></span>
             <span><strong>{formatDuration(video.duration_seconds)}</strong><small>{video.file_bytes ? formatBytes(video.file_bytes) : 'Pending'}</small></span>
             <span><strong>{new Date(video.created_at).toLocaleDateString()}</strong><small>{new Date(video.created_at).toLocaleTimeString()}</small></span>
             <span><StatusBadge status={video.status} /></span>
@@ -1101,18 +1106,33 @@ function VideoCreateDialog({ category, payload, onClose, onQueued }) {
   const firstAvailable = payload.backgrounds?.landscape ? 'landscape' : 'portrait'
   const [orientation, setOrientation] = useState(firstAvailable)
   const [selected, setSelected] = useState([])
+  const [selectedQuestions, setSelectedQuestions] = useState([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const maximum = payload.limits?.[orientation] || (orientation === 'landscape' ? 50 : 10)
   const setMap = new Map(payload.sets.map((item) => [item.set_id, item]))
-  const questionCount = selected.reduce((sum, id) => sum + Number(setMap.get(id)?.question_count || 0), 0)
+  const selectedSet = orientation === 'portrait' ? setMap.get(selected[0]) : null
+  const questionCount = orientation === 'portrait' ? selectedQuestions.length : selected.reduce((sum, id) => sum + Number(setMap.get(id)?.question_count || 0), 0)
 
   function chooseOrientation(value) {
     setOrientation(value)
-    setSelected((current) => value === 'portrait' ? current.slice(0, 1) : current)
+    const nextSelected = value === 'portrait' ? selected.slice(0, 1) : selected
+    setSelected(nextSelected)
+    const questions = value === 'portrait' ? setMap.get(nextSelected[0])?.questions || [] : []
+    setSelectedQuestions(questions.map((item) => item.number))
   }
 
   function toggleSet(item) {
+    if (orientation === 'portrait') {
+      if (selected[0] === item.set_id) {
+        setSelected([])
+        setSelectedQuestions([])
+      } else {
+        setSelected([item.set_id])
+        setSelectedQuestions((item.questions || []).map((question) => question.number))
+      }
+      return
+    }
     setSelected((current) => {
       if (current.includes(item.set_id)) return current.filter((id) => id !== item.set_id)
       const currentCount = current.reduce((sum, id) => sum + Number(setMap.get(id)?.question_count || 0), 0)
@@ -1121,12 +1141,16 @@ function VideoCreateDialog({ category, payload, onClose, onQueued }) {
     })
   }
 
+  function toggleQuestion(number) {
+    setSelectedQuestions((current) => current.includes(number) ? current.filter((item) => item !== number) : [...current, number].sort((a, b) => a - b))
+  }
+
   async function submit(event) {
     event.preventDefault()
     setBusy(true)
     setError('')
     try {
-      await onQueued(await post(`/api/studio/categories/${category.slug}/videos`, { orientation, set_ids: selected }))
+      await onQueued(await post(`/api/studio/categories/${category.slug}/videos`, { orientation, set_ids: selected, ...(orientation === 'portrait' ? { question_numbers: selectedQuestions } : {}) }))
     } catch (requestError) {
       setError(requestError.message)
       setBusy(false)
@@ -1139,9 +1163,10 @@ function VideoCreateDialog({ category, payload, onClose, onQueued }) {
       <button type="button" className={orientation === 'portrait' ? 'active' : ''} disabled={!payload.backgrounds?.portrait} onClick={() => chooseOrientation('portrait')}><Smartphone size={20} /><span><strong>Portrait</strong><small>Up to 10 questions</small></span>{orientation === 'portrait' && <Check size={16} />}</button>
     </div>
     <div className="video-selection-summary"><span><strong>{selected.length}</strong><small>Sets</small></span><span><strong>{questionCount}</strong><small>Questions</small></span><span><strong>{maximum - questionCount}</strong><small>Available</small></span></div>
-    <div className="video-set-list">{['beginner', 'intermediate'].map((difficulty) => <div className="video-set-group" key={difficulty}><div><span className={`difficulty-mark ${difficulty}`}>{difficulty === 'beginner' ? 'B' : 'I'}</span><strong>{difficulty}</strong></div>{payload.sets.filter((item) => item.difficulty === difficulty).map((item) => { const checked = selected.includes(item.set_id); const disabled = !checked && questionCount + item.question_count > maximum; return <button type="button" className={checked ? 'selected' : ''} disabled={disabled} key={item.set_id} onClick={() => toggleSet(item)}><span className="video-checkbox">{checked && <Check size={13} />}</span><span><strong>{item.title}</strong><small>Set {item.number} · {item.question_count} questions</small></span></button> })}</div>)}</div>
+    <div className={`video-set-list ${orientation}`}>{['beginner', 'intermediate'].map((difficulty) => <div className="video-set-group" key={difficulty}><div><span className={`difficulty-mark ${difficulty}`}>{difficulty === 'beginner' ? 'B' : 'I'}</span><strong>{difficulty}</strong></div>{payload.sets.filter((item) => item.difficulty === difficulty).map((item) => { const checked = selected.includes(item.set_id); const disabled = orientation === 'landscape' && !checked && questionCount + item.question_count > maximum; return <button type="button" className={checked ? 'selected' : ''} disabled={disabled} key={item.set_id} onClick={() => toggleSet(item)}><span className="video-checkbox">{checked && <Check size={13} />}</span><span><strong>{item.title}</strong><small>Set {item.number} · {item.question_count} questions</small></span></button> })}</div>)}</div>
+    {orientation === 'portrait' && selectedSet && <section className="portrait-question-picker"><header><div><strong>Choose questions</strong><small>{selectedSet.title}</small></div><div><button type="button" onClick={() => setSelectedQuestions(selectedSet.questions.map((item) => item.number))}>Select all</button><button type="button" onClick={() => setSelectedQuestions([])}>Clear</button></div></header><div>{selectedSet.questions.map((item) => { const checked = selectedQuestions.includes(item.number); return <button type="button" className={checked ? 'selected' : ''} key={item.number} onClick={() => toggleQuestion(item.number)}><span className="video-checkbox">{checked && <Check size={13} />}</span><span><strong>Question {item.number}</strong><small>{item.question}</small></span></button> })}</div></section>}
     {error && <div className="inline-error"><CircleAlert size={15} />{error}</div>}
-    <div className="dialog-actions"><button type="button" className="button secondary" onClick={onClose}>Cancel</button><button className="button primary" disabled={busy || !selected.length}>{busy ? <LoaderCircle className="spin" size={15} /> : <Film size={15} />}Start render</button></div>
+    <div className="dialog-actions"><button type="button" className="button secondary" onClick={onClose}>Cancel</button><button className="button primary" disabled={busy || !selected.length || !questionCount}>{busy ? <LoaderCircle className="spin" size={15} /> : <Film size={15} />}Start render</button></div>
   </form></section></div>
 }
 
@@ -1150,7 +1175,7 @@ function VideoPreviewDialog({ video, youtube, onClose, onUpload }) {
   return <div className="dialog-backdrop"><section className="dialog video-preview-dialog" role="dialog" aria-modal="true"><header><div><p className="kicker">VIDEO DETAILS</p><h2>{video.title}</h2></div><button className="icon-button quiet" title="Close" onClick={onClose}><X size={18} /></button></header><div className="video-preview-body">
     {ready ? <video controls preload="metadata" src={video.stream_url}>Your browser cannot play this video.</video> : <div className="video-preview-pending">{['queued', 'rendering'].includes(video.status) ? <LoaderCircle className="spin" size={30} /> : <CircleAlert size={30} />}<strong>{video.status === 'interrupted' ? 'Render interrupted' : video.status === 'failed' ? 'Render failed' : 'Render in progress'}</strong><span>{video.error || 'Progress is available in the jobs drawer.'}</span></div>}
     <div className="video-preview-meta"><span><small>Format</small><strong>{video.orientation}</strong></span><span><small>Questions</small><strong>{video.question_count}</strong></span><span><small>Runtime</small><strong>{formatDuration(video.duration_seconds)}</strong></span><span><small>File size</small><strong>{video.file_bytes ? formatBytes(video.file_bytes) : '-'}</strong></span></div>
-    <div className="video-preview-sets"><small>SOURCE SETS</small><span>{video.selections.map((item) => item.title || `Set ${item.number}`).join(' · ')}</span></div>
+    <div className="video-preview-sets"><small>SOURCE SETS</small><span>{video.selections.map(videoSelectionLabel).join(' · ')}</span></div>
     {video.youtube_upload && <div className={`youtube-upload-summary ${video.youtube_upload.status}`}><Youtube size={18} /><span><strong>{video.youtube_upload.status === 'complete' ? 'Published on YouTube' : `YouTube upload ${video.youtube_upload.status}`}</strong><small>{video.youtube_upload.error || `${video.youtube_upload.privacy_status} visibility`}</small></span>{video.youtube_upload.youtube_url && <a className="icon-button" title="Open on YouTube" href={video.youtube_upload.youtube_url} target="_blank" rel="noreferrer"><ExternalLink size={15} /></a>}</div>}
     <div className="dialog-actions"><button className="button secondary" onClick={onClose}>Close</button>{ready && <a className="button secondary" href={video.download_url}><Download size={15} />Download MP4</a>}{ready && <button className="button primary" disabled={!youtube?.connected || ['queued', 'uploading'].includes(video.youtube_upload?.status)} title={youtube?.connected ? 'Upload this video to YouTube' : 'Connect YouTube in Admin first'} onClick={onUpload}><Youtube size={15} />{video.youtube_upload?.status === 'complete' ? 'Upload again' : 'Upload to YouTube'}</button>}</div>
   </div></section></div>

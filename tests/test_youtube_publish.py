@@ -168,6 +168,15 @@ def test_deployed_video_questions_use_the_exact_selected_sets(tmp_path: Path) ->
                 {
                     "questions": [
                         {
+                            "question": f"First question from set {number}?",
+                            "choices": [
+                                {"choice_id": "a", "label": "Dolphin"},
+                                {"choice_id": "b", "label": animal},
+                            ],
+                            "correct_choice_id": "a",
+                            "explanation": "The first learning point.",
+                        },
+                        {
                             "question": f"Which answer belongs to set {number}?",
                             "choices": [
                                 {"choice_id": "a", "label": animal},
@@ -187,7 +196,11 @@ def test_deployed_video_questions_use_the_exact_selected_sets(tmp_path: Path) ->
         "title": "Geography Quiz",
         "question_count": 1,
         "selections": [
-            {"set_id": "geography_beginner_02", "question_count": 1}
+            {
+                "set_id": "geography_beginner_02",
+                "question_count": 1,
+                "question_numbers": [2],
+            }
         ],
     }
 

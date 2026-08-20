@@ -51,6 +51,19 @@ class StudioVideoStore:
                 "difficulty": str(item["difficulty"]),
                 "title": str(item["title"]),
                 "question_count": int(item.get("question_count", 10)),
+                "questions": [
+                    {
+                        "number": question_number,
+                        "question_id": str(question.get("question_id") or ""),
+                        "question": str(question.get("question") or ""),
+                    }
+                    for question_number, question in enumerate(
+                        self._read_json(content / item["questions_file"]).get(
+                            "questions", []
+                        ),
+                        start=1,
+                    )
+                ],
             }
             for item in document.get("quizzes", [])
         ]
@@ -81,6 +94,7 @@ class StudioVideoStore:
         category_slug: str,
         orientation: str,
         set_ids: list[str],
+        question_numbers: list[int] | None = None,
     ) -> dict[str, Any]:
         inventory = self.inventory(category_slug)
         if orientation not in {"portrait", "landscape"}:
@@ -93,19 +107,59 @@ class StudioVideoStore:
         if len(set_ids) != len(set(set_ids)):
             raise StudioVideoError("quiz set selection contains duplicates")
         try:
-            selected = [by_id[set_id] for set_id in set_ids]
+            source_sets = [by_id[set_id] for set_id in set_ids]
         except KeyError as exc:
             raise StudioVideoError(f"quiz set is not published: {exc.args[0]}") from exc
-        question_count = sum(item["question_count"] for item in selected)
+        question_count = sum(item["question_count"] for item in source_sets)
         maximum = 10 if orientation == "portrait" else 50
-        if not selected:
+        if not source_sets:
             raise StudioVideoError("select at least one quiz set")
         if question_count > maximum:
             raise StudioVideoError(
                 f"{orientation} videos support at most {maximum} questions"
             )
-        if any(item["question_count"] != 10 for item in selected):
+        if any(item["question_count"] != 10 for item in source_sets):
             raise StudioVideoError("every selected quiz set must contain 10 questions")
+        selected = [
+            {
+                key: item[key]
+                for key in (
+                    "set_id",
+                    "number",
+                    "difficulty",
+                    "title",
+                    "question_count",
+                )
+            }
+            for item in source_sets
+        ]
+        if question_numbers is not None:
+            if orientation != "portrait":
+                raise StudioVideoError(
+                    "individual question selection is available only for portrait videos"
+                )
+            if len(selected) != 1:
+                raise StudioVideoError(
+                    "portrait question selection requires exactly one quiz set"
+                )
+            if len(question_numbers) != len(set(question_numbers)):
+                raise StudioVideoError("question selection contains duplicates")
+            selected_numbers = sorted(question_numbers)
+            invalid = [
+                number
+                for number in selected_numbers
+                if number < 1 or number > source_sets[0]["question_count"]
+            ]
+            if invalid:
+                raise StudioVideoError(
+                    "question numbers must be between 1 and 10: "
+                    + ", ".join(str(number) for number in invalid)
+                )
+            if not selected_numbers:
+                raise StudioVideoError("select at least one question")
+            selected[0]["question_numbers"] = selected_numbers
+            selected[0]["question_count"] = len(selected_numbers)
+            question_count = len(selected_numbers)
         return {
             **inventory,
             "selected": selected,
@@ -128,7 +182,11 @@ class StudioVideoStore:
         if not remotion.is_file():
             raise StudioVideoError("Remotion dependencies are not installed")
         selection_tuples = [
-            (str(item["difficulty"]), int(item["number"]), None)
+            (
+                str(item["difficulty"]),
+                int(item["number"]),
+                item.get("question_numbers"),
+            )
             for item in selections
         ]
         output_dir = self.video_root / category_slug
