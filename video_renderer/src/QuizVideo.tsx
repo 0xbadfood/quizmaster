@@ -56,69 +56,7 @@ const Background: React.FC<{ source: string; dim?: number }> = ({
   </AbsoluteFill>
 );
 
-const Progress: React.FC<{ current: number; total: number }> = ({
-  current,
-  total,
-}) => (
-  <div
-    style={{
-      position: "absolute",
-      top: 60,
-      left: 70,
-      right: 70,
-      height: 76,
-      display: "flex",
-      alignItems: "center",
-    }}
-  >
-    {Array.from({ length: total }, (_, index) => {
-      const number = index + 1;
-      const complete = number < current;
-      const active = number === current;
-      return (
-        <React.Fragment key={number}>
-          {index > 0 ? (
-            <div
-              style={{
-                flex: 1,
-                height: 8,
-                backgroundColor: complete
-                  ? colors.green
-                  : "rgba(255,255,255,0.4)",
-                boxShadow: "0 2px 6px rgba(0,0,0,0.35)",
-              }}
-            />
-          ) : null}
-          <div
-            style={{
-              width: active ? 62 : 52,
-              height: active ? 62 : 52,
-              flex: `0 0 ${active ? 62 : 52}px`,
-              borderRadius: "50%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: complete
-                ? colors.green
-                : active
-                  ? colors.yellow
-                  : "rgba(247,251,255,0.92)",
-              border: `4px solid ${active ? colors.orange : colors.white}`,
-              color: active ? colors.ink : complete ? colors.white : "#5a6d80",
-              fontSize: active ? 29 : 24,
-              fontWeight: 900,
-              boxShadow: "0 5px 12px rgba(0,0,0,0.35)",
-            }}
-          >
-            {number}
-          </div>
-        </React.Fragment>
-      );
-    })}
-  </div>
-);
-
-const LandscapeProgress: React.FC<{
+const QuestionProgressBadge: React.FC<{
   current: number;
   total: number;
 }> = ({ current, total }) => (
@@ -670,6 +608,17 @@ const QuestionScene: React.FC<{
     fontFamily: '"DejaVu Sans"',
     fontWeight: 900,
   });
+  const portraitQuestionFit = fitText({
+    text: question.question,
+    maxWidth: 700,
+    maxHeight: 500,
+    maxFontSize: 68,
+    minFontSize: 36,
+    maxLines: 7,
+    lineHeight: 1.12,
+    fontFamily: '"DejaVu Sans"',
+    fontWeight: 900,
+  });
 
   return (
     <AbsoluteFill
@@ -689,7 +638,7 @@ const QuestionScene: React.FC<{
       />
       {landscape ? (
         <>
-          <LandscapeProgress
+          <QuestionProgressBadge
             current={question.questionNumber}
             total={totalQuestions}
           />
@@ -776,48 +725,44 @@ const QuestionScene: React.FC<{
         </>
       ) : (
         <>
-          <Progress current={question.questionNumber} total={totalQuestions} />
+          <QuestionProgressBadge
+            current={question.questionNumber}
+            total={totalQuestions}
+          />
           <div
             style={{
               position: "absolute",
-              top: 675,
+              top: 400,
               left: 64,
               right: 64,
-              minHeight: 330,
+              height: 650,
               backgroundColor: "rgba(247,251,255,0.96)",
               borderTop: `10px solid ${colors.yellow}`,
               borderBottom: `10px solid ${colors.orange}`,
               boxShadow: "0 18px 38px rgba(0,0,0,0.42)",
               display: "flex",
               alignItems: "center",
-              padding: "34px 32px 34px 44px",
-              gap: 28,
+              padding: "46px 38px 46px 52px",
+              gap: 34,
               opacity: 1 - revealProgress,
               transform: `translateY(${revealProgress * 30}px)`,
             }}
           >
-            <div style={{ flex: 1 }}>
-              <div
-                style={{
-                  color: colors.orange,
-                  fontSize: 25,
-                  fontWeight: 900,
-                  textTransform: "uppercase",
-                  marginBottom: 15,
-                }}
-              >
-                Question {question.questionNumber} of {totalQuestions}
-              </div>
-              <div
-                style={{
-                  color: colors.ink,
-                  fontSize: question.question.length > 105 ? 37 : 42,
-                  lineHeight: 1.16,
-                  fontWeight: 900,
-                }}
-              >
-                {question.question}
-              </div>
+            <div
+              style={{
+                flex: 1,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: colors.ink,
+                fontSize: portraitQuestionFit.fontSize,
+                lineHeight: portraitQuestionFit.lineHeight,
+                fontWeight: 900,
+                textAlign: "center",
+                letterSpacing: 0,
+              }}
+            >
+              {question.question}
             </div>
             <Timer
               localFrame={frame}
