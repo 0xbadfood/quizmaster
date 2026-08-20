@@ -209,10 +209,11 @@ def test_qwen_landscape_prompt_defines_video_safe_areas() -> None:
     assert "1920x1080" in prompt
     assert "true 16:9 landscape" in prompt
     assert "HARD HEADER LIMIT" in prompt
-    assert "20 percent of the final frame" in prompt
+    assert "y=4% to y=18%" in prompt
     assert "two-by-two grid" in prompt
     assert "high-key, light-toned, low-contrast" in prompt
     assert "Do not plan one row of four" in prompt
+    assert "ADVENTURE" not in prompt
 
 
 def test_direct_landscape_prompt_uses_shallow_light_quiz_layout() -> None:
@@ -222,21 +223,23 @@ def test_direct_landscape_prompt_uses_shallow_light_quiz_layout() -> None:
         subtitle="ADVENTURE",
         layout="landscape",
     )
+    compact = " ".join(prompt.split())
 
-    assert "upper 20 percent" in prompt
-    assert "y=20% to y=52%" in prompt
-    assert "two-by-two grid" in prompt
-    assert "high-key, light-toned, low-contrast" in prompt
-    assert "Avoid dominant\ndark colors" in prompt
-    assert "rich natural color" not in prompt
-    assert "cinematic light" not in prompt
+    assert "y=4% to y=18%" in compact
+    assert "y=20% to y=52%" in compact
+    assert "two-by-two grid" in compact
+    assert "high-key, light-toned, low-contrast" in compact
+    assert "Avoid dominant dark colors" in compact
+    assert "rich natural color" not in compact
+    assert "cinematic light" not in compact
+    assert "ADVENTURE" not in compact
 
 
 def test_landscape_validator_rejects_legacy_oversized_banner_plan() -> None:
     legacy_prompt = (
         "Create a true 16:9 landscape background with the exact title GEOGRAPHY "
-        "QUIZ and subtitle ADVENTURE. Reserve the top 30 percent for a large title "
-        "emblem. Keep a central question safe area and place four answer cards in "
+        "QUIZ and no other text. Reserve the top 30 percent for a large title emblem. "
+        "Keep a central question safe area and place four answer cards in "
         "one horizontal row. Use a rich dark blue environment with decorative "
         "category scenery at both sides. Keep all controls and labels out of the "
         "image and use generous crop-safe margins. "
@@ -260,11 +263,43 @@ def test_landscape_validator_rejects_legacy_oversized_banner_plan() -> None:
         prompt=legacy_prompt,
     )
 
-    with pytest.raises(ValueError, match="upper 20 percent"):
+    with pytest.raises(ValueError, match="y=4%-18%"):
         _validate_prompt_plan(
             plan,
             display_title="GEOGRAPHY QUIZ",
             subtitle="ADVENTURE",
+            layout="landscape",
+        )
+
+
+def test_landscape_validator_rejects_adventure_subtitle() -> None:
+    prompt = build_background_prompt(
+        category="Geography",
+        display_title="GEOGRAPHY QUIZ",
+        layout="landscape",
+    )
+    plan = BackgroundPromptPlan(
+        schema_version="quiz_background_prompt_plan_v1",
+        visual_summary="A light geography quiz background with a compact title.",
+        scene_concept=(
+            "A pale educational landscape leaves broad calm regions for question "
+            "and answer panels while small map details frame the edges."
+        ),
+        focal_elements=["Compact title", "Pale map", "Edge landmarks"],
+        composition=(
+            "A 16:9 landscape with a shallow top title and a two-by-two lower grid."
+        ),
+        palette_and_lighting=(
+            "High-key pale sky colors with soft diffuse light and low contrast."
+        ),
+        prompt=prompt + " Add the subtitle ADVENTURE.",
+    )
+
+    with pytest.raises(ValueError, match="omit the subtitle"):
+        _validate_prompt_plan(
+            plan,
+            display_title="GEOGRAPHY QUIZ",
+            subtitle="",
             layout="landscape",
         )
 

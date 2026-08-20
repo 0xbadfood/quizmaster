@@ -644,7 +644,7 @@ class CategoryProductionPipeline:
         planned = plan_quiz_background_prompt(
             category=category["name"],
             display_title=category["display_title"],
-            subtitle="ADVENTURE",
+            subtitle="",
             provider_id=self.config.qwen_provider_id,
             database_path=self.config.database_path,
             secret_key_file=self.config.secret_key_file,
@@ -677,7 +677,7 @@ class CategoryProductionPipeline:
             model_override=self.config.background_model,
             quality=self.config.image_quality,
             seed=self.config.seed + 1000,
-            subtitle="ADVENTURE",
+            subtitle="",
             prompt_override=plan_document.prompt,
             planning_metadata=planning,
             force=self.config.force_background,

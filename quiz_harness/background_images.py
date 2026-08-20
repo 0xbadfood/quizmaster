@@ -69,11 +69,12 @@ def build_background_planning_prompt(
     guidance = category_guidance.strip() if category_guidance else "None supplied."
     if layout == "landscape":
         production_contract = """- The normalized video asset is exactly 1920x1080 pixels in a true 16:9 landscape composition.
-- HARD HEADER LIMIT: confine the complete title emblem and subtitle ribbon to one
-  shallow banner at the very top. The assembly must fit entirely inside the upper
-  20 percent of the final frame, with its lower edge above y=20%. Scale the lettering
-  down as needed, center it, and keep it within roughly 70 percent of the frame width;
-  never let the banner expand into the quiz content area or touch the side edges.
+- HARD HEADER LIMIT: render only the main title inside one shallow banner near the
+  top. Do not add a subtitle or ribbon. Leave at least 4 percent clear space above the
+  banner so no border or letter touches the top edge. The complete title banner must
+  fit inside y=4% to y=18% of the final frame. Scale the lettering down as needed,
+  center it, and keep it within roughly 70 percent of the frame width; never let the
+  banner expand into the quiz content area or touch the side edges.
 - Keep y=20% to y=52% calm and open for one large, wide question panel.
 - Keep y=52% to y=96% calm and open for four horizontal answer panels arranged as a
   two-by-two grid: two wide choices per row and two rows. Do not plan one row of four.
@@ -86,6 +87,8 @@ def build_background_planning_prompt(
   or other focal subjects behind the question and answer safe regions.
 - Keep all critical content inside a centered 16:9 crop with expendable scenery at
   the extreme top and bottom because some providers return a wider 3:2 source."""
+        subtitle_requirement = "Subtitle: omit it entirely; render no subtitle or ribbon."
+        allowed_text = "the exact main title"
     else:
         production_contract = """- The normalized Flutter asset is exactly 941x1672 pixels: a tall 9:16-like portrait.
 - Reserve roughly the top 28 percent for a large dimensional title emblem containing
@@ -94,12 +97,14 @@ def build_background_planning_prompt(
   because Flutter places question and answer controls over that area.
 - Put category storytelling, characters, landmarks, and decorative detail around the
   outer edges and lower third, with generous portrait safe margins."""
+        subtitle_requirement = f"Ribbon subtitle that must be embedded exactly: {subtitle}"
+        allowed_text = "the exact main title and subtitle"
     return f"""Plan and write the final text-to-image prompt for one children's quiz
 {layout} background.
 
 Category: {category}
 Main title that must be embedded exactly: {display_title}
-Ribbon subtitle that must be embedded exactly: {subtitle}
+{subtitle_requirement}
 Optional editorial guidance: {guidance}
 
 Fixed production contract:
@@ -111,7 +116,7 @@ Fixed production contract:
   leak an answer.
 - Make the scene culturally and historically accurate where relevant, celebratory,
   educational, and appropriate for children ages 3 to 10.
-- The image must contain no text other than the exact main title and subtitle: no
+- The image must contain no text other than {allowed_text}: no
   dates, captions, labels, signs, logos, watermarks, or readable writing on props.
 - Exclude interface controls, question cards, answer boxes, borders, political-party
   symbols, modern campaign imagery, malformed anatomy, and duplicate subjects.
@@ -131,11 +136,11 @@ def _validate_prompt_plan(
     layout: BackgroundLayout = "portrait",
 ) -> None:
     folded = plan.prompt.casefold()
-    missing = [
-        value
-        for value in (display_title, subtitle)
-        if value.casefold() not in folded
-    ]
+    folded_compact = " ".join(folded.split())
+    required_text = (
+        (display_title,) if layout == "landscape" else (display_title, subtitle)
+    )
+    missing = [value for value in required_text if value.casefold() not in folded]
     if missing:
         raise ValueError(
             "background prompt omits exact text: " + ", ".join(missing)
@@ -145,33 +150,37 @@ def _validate_prompt_plan(
     if named_style:
         raise ValueError(f"background prompt names copyrighted style: {named_style}")
     if layout == "landscape":
-        landscape = "landscape" in folded or any(
-            marker in folded for marker in ("16:9", "1920x1080", "wide screen")
+        forbidden_subtitles = {
+            value.casefold() for value in (subtitle, "ADVENTURE") if value
+        }
+        if any(value in folded for value in forbidden_subtitles):
+            raise ValueError("landscape background prompt must omit the subtitle")
+        landscape = "landscape" in folded_compact or any(
+            marker in folded_compact
+            for marker in ("16:9", "1920x1080", "wide screen")
         )
         if not landscape:
             raise ValueError(
                 "background prompt must explicitly request landscape composition"
             )
-        shallow_header = "banner" in folded and any(
-            marker in folded
+        shallow_header = "banner" in folded_compact and any(
+            marker in folded_compact
             for marker in (
-                "top 20 percent",
-                "upper 20 percent",
-                "top 20%",
-                "upper 20%",
-                "top fifth",
-                "upper fifth",
+                "y=4% to y=18%",
+                "y=4% through y=18%",
+                "4% to 18%",
+                "4 percent to 18 percent",
             )
         )
         if not shallow_header:
             raise ValueError(
-                "landscape background prompt must confine the banner to the upper 20 percent"
+                "landscape background prompt must confine the title banner to y=4%-18%"
             )
         light_field = any(
-            marker in folded
+            marker in folded_compact
             for marker in ("high-key", "light-toned", "pale", "soft pastel")
         ) and any(
-            marker in folded
+            marker in folded_compact
             for marker in ("low-contrast", "low contrast", "restrained contrast")
         )
         if not light_field:
@@ -179,7 +188,7 @@ def _validate_prompt_plan(
                 "landscape background prompt must request a light, low-contrast content field"
             )
         answer_grid = any(
-            marker in folded
+            marker in folded_compact
             for marker in ("two-by-two", "two by two", "2x2", "two rows")
         )
         if not answer_grid:
@@ -456,10 +465,11 @@ def build_background_prompt(
     )
     if layout == "landscape":
         layout_direction = """The final image is a true 16:9 landscape video background. Confine the exact
-title and subtitle to one shallow banner entirely within the upper 20 percent; its
-lower edge must remain above y=20%. Center it within roughly 70 percent of the frame
-width rather than stretching it edge to edge. Keep y=20% to y=52% open for a wide question
-panel and y=52% to y=96% open for four horizontal answer panels in a two-by-two grid.
+main title to one shallow banner. Render no subtitle and no subtitle ribbon. Leave
+the upper 4 percent completely clear and fit the entire title banner inside y=4% to
+y=18%, with no border or letter touching the top edge. Center it within roughly 70
+percent of the frame width rather than stretching it edge to edge. Keep y=20% to
+y=52% open for a wide question panel and y=52% to y=96% open for four horizontal answer panels in a two-by-two grid.
 Outside the header, use a high-key, light-toned, low-contrast field with pale sky
 colors, soft cool neutrals, restrained pastels, and diffuse daylight. Avoid dominant
 dark colors, saturated neon, dramatic contrast, heavy vignettes, and bright central
@@ -467,6 +477,10 @@ glows. Keep supporting scenery small and subtle at the far edges and corners."""
         style_direction = """Use a polished family-friendly 3D animated illustration
 aesthetic with clean soft depth, restrained color, diffuse high-key lighting, and
 crisp but unobtrusive edge details."""
+        text_elements = f'''Render exactly one text element and spell it exactly:
+Main title: "{display_title}"
+
+Do not render a subtitle or subtitle ribbon.'''
     else:
         layout_direction = """The final image fills a tall mobile screen. Reserve the top 28 percent for the
 title and keep the middle calmer and lower-contrast for Flutter question and answer
@@ -474,6 +488,9 @@ controls. Place supporting scenery mainly around the outer edges and lower third
         style_direction = """Use a high-end family-friendly 3D animated illustration
 aesthetic, rich natural color, cinematic light, appealing depth, and crisp readable
 silhouettes."""
+        text_elements = f'''Render exactly these two text elements and spell them exactly:
+1. Main title: "{display_title}"
+2. Small ribbon subtitle: "{subtitle}"'''
     return f"""Create one polished {layout} background for a children's {category} quiz.
 {layout_direction} Build one coherent, immersive scene rather
 than a collage. {style_direction}
@@ -482,9 +499,7 @@ Visual direction: {subject_guidance}
 
 Keep all important content within generous safe margins.
 
-Render exactly these two text elements and spell them exactly:
-1. Main title: "{display_title}"
-2. Small ribbon subtitle: "{subtitle}"
+{text_elements}
 
 Do not include any other words, dates, letters, numbers, captions, logos, watermarks,
 interface controls, question cards, answer boxes, borders, collage panels, copyrighted
@@ -675,11 +690,12 @@ def generate_quiz_background(
         )
 
     model = _model(provider, model_override)
+    effective_subtitle = "" if layout == "landscape" else subtitle
     prompt = prompt_override.strip() if prompt_override else build_background_prompt(
         category=category,
         display_title=display_title,
         visual_brief=visual_brief,
-        subtitle=subtitle,
+        subtitle=effective_subtitle,
         layout=layout,
     )
     if len(prompt) < 100:
@@ -742,7 +758,7 @@ def generate_quiz_background(
         "category": category,
         "category_slug": slugify(category),
         "display_title": display_title,
-        "subtitle": subtitle,
+        "subtitle": effective_subtitle or None,
         "layout": layout,
         "provider_id": provider["id"],
         "provider_type": provider["provider_type"],

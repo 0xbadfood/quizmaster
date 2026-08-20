@@ -71,6 +71,7 @@ def main() -> int:
     args = parser.parse_args()
 
     display_title = (args.display_title or f"{args.category} QUIZ").strip().upper()
+    subtitle = "" if args.layout == "landscape" else args.subtitle.strip().upper()
     output = args.output or (
         Path("background_previews")
         / _slug(args.category)
@@ -93,7 +94,7 @@ def main() -> int:
             planned = plan_quiz_background_prompt(
                 category=args.category,
                 display_title=display_title,
-                subtitle=args.subtitle.strip().upper(),
+                subtitle=subtitle,
                 provider_id=args.planner_provider,
                 model_override=args.planner_model,
                 category_guidance=args.category_guidance,
@@ -135,7 +136,7 @@ def main() -> int:
         result = generate_quiz_background(
             category=args.category,
             display_title=display_title,
-            subtitle=args.subtitle.strip().upper(),
+            subtitle=subtitle,
             provider_id=args.provider,
             model_override=args.model,
             quality=args.quality,

@@ -1188,7 +1188,7 @@ def generate_landscape_background(
         planned = plan_quiz_background_prompt(
             category=category["name"],
             display_title=category["display_title"],
-            subtitle="ADVENTURE",
+            subtitle="",
             provider_id=planner["id"],
             database_path=DATABASE_PATH,
             secret_key_file=SECRET_KEY_FILE,
@@ -1215,7 +1215,7 @@ def generate_landscape_background(
             model_override=str(image_model),
             quality=payload.quality,
             seed=payload.seed,
-            subtitle="ADVENTURE",
+            subtitle="",
             prompt_override=plan_document.prompt,
             planning_metadata=planning,
             force=payload.force,
