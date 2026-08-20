@@ -4,6 +4,7 @@ import pytest
 
 from scripts.create_video import _output_name
 from scripts.prepare_remotion_quiz import (
+    _display_question_sequence,
     _resolve_background,
     parse_question_selection,
 )
@@ -12,6 +13,17 @@ from scripts.prepare_remotion_quiz import (
 def test_question_selection_accepts_ranges_and_lists() -> None:
     assert parse_question_selection("1-3,5,8-9") == [1, 2, 3, 5, 8, 9]
     assert parse_question_selection("all") == list(range(1, 11))
+
+
+def test_selected_questions_receive_local_display_numbers() -> None:
+    assert _display_question_sequence([5, 6, 7, 8, 9, 10]) == [
+        (1, 5),
+        (2, 6),
+        (3, 7),
+        (4, 8),
+        (5, 9),
+        (6, 10),
+    ]
 
 
 @pytest.mark.parametrize("value", ["0", "11", "4-2", "one", "1,,3"])

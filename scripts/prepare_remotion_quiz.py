@@ -62,6 +62,10 @@ def parse_question_selection(value: str, total: int = 10) -> list[int]:
     return sorted(selection)
 
 
+def _display_question_sequence(source_numbers: list[int]) -> list[tuple[int, int]]:
+    return list(enumerate(source_numbers, start=1))
+
+
 def _studio_video_background(category: str, role: str) -> Path | None:
     root = STUDIO_ROOT / category
     spec_path = root / "category-image-spec.json"
@@ -210,8 +214,10 @@ def prepare(
 
     copied_answers: dict[str, str] = {}
     questions = []
-    for question_number in selected_numbers:
-        question = quiz["questions"][question_number - 1]
+    for display_number, source_number in _display_question_sequence(
+        selected_numbers
+    ):
+        question = quiz["questions"][source_number - 1]
         question_id = question["question_id"]
         audio = audio_manifest["questions"].get(question_id)
         if not audio:
@@ -249,7 +255,7 @@ def prepare(
         questions.append(
             {
                 "questionId": question_id,
-                "questionNumber": question_number,
+                "questionNumber": display_number,
                 "question": question["question"],
                 "explanation": question["explanation"],
                 "correctChoiceId": question["correct_choice_id"],
@@ -278,7 +284,7 @@ def prepare(
         "background": background,
         "timerAudio": "quiz/timer-five-seconds.mp3",
         "presentation": presentation_assets,
-        "totalQuestions": 10,
+        "totalQuestions": len(questions),
         "questions": questions,
     }
     output = RENDERER_ROOT / "src/generated-quiz.json"
