@@ -51,6 +51,7 @@ from .studio_questions import (
 from .studio_sets import QuizSetError, QuizSetStore
 from .studio_audio import StudioAudioError, StudioAudioStore
 from .studio_publish import StudioPublishError, StudioPublishStore
+from .studio_video import StudioVideoError, StudioVideoStore
 from .studio_visuals import StudioVisualError, StudioVisualStore
 from .vibevoice_audio import DEFAULT_REFERENCE_TRANSCRIPT
 
@@ -73,6 +74,7 @@ STUDIO_SOURCE_ROOT = Path(
 CATEGORY_BUNDLE_ROOT = Path(
     os.getenv("QUIZ_CATEGORY_BUNDLE_ROOT", ROOT / "dist/category_bundles")
 )
+VIDEO_ROOT = Path(os.getenv("QUIZ_VIDEO_ROOT", ROOT / "dist/videos"))
 PROVIDER_TEST_ROOT = ASSET_ROOT / "provider-tests"
 PROVIDER_AUDIO_ROOT = ASSET_ROOT / "provider-audio"
 SECRET_KEY_FILE = Path(
@@ -147,6 +149,7 @@ quiz_sets = QuizSetStore(STUDIO_SOURCE_ROOT, database)
 studio_visuals = StudioVisualStore(STUDIO_SOURCE_ROOT)
 studio_audio = StudioAudioStore(STUDIO_SOURCE_ROOT)
 studio_publish = StudioPublishStore(STUDIO_SOURCE_ROOT, CATEGORY_BUNDLE_ROOT)
+studio_videos = StudioVideoStore(CATEGORY_BUNDLE_ROOT, VIDEO_ROOT)
 
 
 def _now() -> str:
@@ -415,6 +418,13 @@ class ActivateReleaseRequest(BaseModel):
     version: int = Field(ge=1)
 
 
+class VideoCreationRequest(BaseModel):
+    orientation: Literal["portrait", "landscape"]
+    set_ids: list[str] = Field(min_length=1, max_length=5)
+    concurrency: int = Field(default=8, ge=1, le=16)
+    crf: int = Field(default=18, ge=1, le=51)
+
+
 def _workspace(context: dict[str, Any]) -> Path:
     return ASSET_ROOT / context["asset_key"] / f"plan-{context['plan_id']}"
 
@@ -534,6 +544,7 @@ def _pipeline_detail(plan_id: int) -> dict[str, Any]:
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> Any:
     database.mark_interrupted_jobs(_now())
+    database.mark_interrupted_videos(_now())
     yield
 
 
@@ -1442,6 +1453,7 @@ def _active_category_jobs(category_slug: str) -> list[dict[str, Any]]:
         job
         for job in database.studio_jobs(limit=100)
         if job["status"] in {"queued", "running"}
+        and job["kind"] != "video_render"
         and job.get("context", {}).get("category_slug") == category_slug
     ]
 
@@ -1548,6 +1560,177 @@ def download_category_release(category_slug: str, version: int) -> FileResponse:
         filename=archive.name,
         headers={"X-Content-SHA256": str(record["archive_sha256"])},
     )
+
+
+def _public_video(record: dict[str, Any]) -> dict[str, Any]:
+    result = {key: value for key, value in record.items() if key != "file_path"}
+    if record["status"] == "complete":
+        result["stream_url"] = f"/api/studio/videos/{record['id']}/stream"
+        result["download_url"] = f"/api/studio/videos/{record['id']}/download"
+    else:
+        result["stream_url"] = None
+        result["download_url"] = None
+    return result
+
+
+def _studio_video_file(video_id: str) -> tuple[Path, dict[str, Any]]:
+    try:
+        record = database.studio_video(video_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Video not found") from exc
+    if record["status"] != "complete" or not record.get("file_path"):
+        raise HTTPException(status_code=409, detail="Video is not ready")
+    path = Path(record["file_path"]).resolve()
+    root = VIDEO_ROOT.resolve()
+    if not path.is_relative_to(root) or not path.is_file():
+        raise HTTPException(status_code=404, detail="Video file is unavailable")
+    return path, record
+
+
+@app.get("/api/studio/categories/{category_slug}/videos")
+def category_video_inventory(category_slug: str) -> dict[str, Any]:
+    try:
+        category = database.studio_category(category_slug)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Category not found") from exc
+    try:
+        inventory = studio_videos.inventory(category_slug)
+        bundle_version = inventory["bundle_version"]
+        sets = inventory["sets"]
+        backgrounds = inventory["backgrounds"]
+        blocked_reason = (
+            None
+            if any(backgrounds.values())
+            else "Generate a portrait or landscape video background before creating a video."
+        )
+    except (OSError, ValueError, StudioVideoError, KeyError) as exc:
+        bundle_version = None
+        sets = []
+        backgrounds = {"portrait": False, "landscape": False}
+        blocked_reason = f"Publish {category['name']} before creating videos: {exc}"
+    return {
+        "category_slug": category_slug,
+        "deployed": bundle_version is not None,
+        "can_create": bundle_version is not None and any(backgrounds.values()),
+        "bundle_version": bundle_version,
+        "sets": sets,
+        "backgrounds": backgrounds,
+        "limits": {"portrait": 10, "landscape": 50},
+        "blocked_reason": blocked_reason,
+        "videos": [
+            _public_video(item)
+            for item in database.studio_videos(category_slug, limit=100)
+        ],
+    }
+
+
+@app.post("/api/studio/categories/{category_slug}/videos")
+def create_category_video(
+    category_slug: str, payload: VideoCreationRequest
+) -> dict[str, Any]:
+    try:
+        category = database.studio_category(category_slug)
+        resolved = studio_videos.resolve_selection(
+            category_slug=category_slug,
+            orientation=payload.orientation,
+            set_ids=payload.set_ids,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Category not found") from exc
+    except (OSError, ValueError, StudioVideoError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    video_id = uuid.uuid4().hex
+    selected = resolved["selected"]
+    count = resolved["question_count"]
+    now = _now()
+    title = f"{category['name']} · {payload.orientation.title()} · {count} questions"
+    record = database.create_studio_video(
+        {
+            "id": video_id,
+            "category_slug": category_slug,
+            "title": title,
+            "orientation": payload.orientation,
+            "bundle_version": resolved["bundle_version"],
+            "selections": selected,
+            "question_count": count,
+            "status": "queued",
+            "created_at": now,
+            "updated_at": now,
+        }
+    )
+
+    def target(progress: Callable[..., None]) -> dict[str, Any]:
+        database.update_studio_video(
+            video_id, status="rendering", updated_at=_now()
+        )
+        try:
+            rendered = studio_videos.render(
+                video_id=video_id,
+                category_slug=category_slug,
+                orientation=payload.orientation,
+                bundle_version=resolved["bundle_version"],
+                selections=selected,
+                concurrency=payload.concurrency,
+                crf=payload.crf,
+                progress=progress,
+            )
+        except Exception as exc:
+            database.update_studio_video(
+                video_id,
+                status="failed",
+                error=str(exc),
+                updated_at=_now(),
+            )
+            raise
+        completed = database.update_studio_video(
+            video_id,
+            status="complete",
+            file_name=rendered["file_name"],
+            file_path=rendered["file_path"],
+            file_bytes=rendered["file_bytes"],
+            duration_seconds=rendered["duration_seconds"],
+            updated_at=_now(),
+        )
+        return _public_video(completed)
+
+    job = jobs.start(
+        "video_render",
+        target,
+        context={
+            "category_slug": category_slug,
+            "video_id": video_id,
+            "orientation": payload.orientation,
+            "question_count": count,
+            "bundle_version": resolved["bundle_version"],
+        },
+    )
+    database.attach_studio_video_job(video_id, job_id=job["id"], updated_at=_now())
+    return {**job, "video": _public_video(record)}
+
+
+@app.get("/api/studio/videos/{video_id}")
+def studio_video(video_id: str) -> dict[str, Any]:
+    try:
+        return _public_video(database.studio_video(video_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Video not found") from exc
+
+
+@app.get("/api/studio/videos/{video_id}/stream")
+def stream_studio_video(video_id: str) -> FileResponse:
+    path, _ = _studio_video_file(video_id)
+    return FileResponse(
+        path,
+        media_type="video/mp4",
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
+
+
+@app.get("/api/studio/videos/{video_id}/download")
+def download_studio_video(video_id: str) -> FileResponse:
+    path, record = _studio_video_file(video_id)
+    return FileResponse(path, media_type="video/mp4", filename=record["file_name"])
 
 
 @app.get("/api/studio/jobs")

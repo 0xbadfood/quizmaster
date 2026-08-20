@@ -215,6 +215,35 @@ MIGRATIONS: list[tuple[int, str]] = [
         WHERE display_tag = '';
         """,
     ),
+    (
+        6,
+        """
+        CREATE TABLE studio_videos (
+            id TEXT PRIMARY KEY,
+            category_slug TEXT NOT NULL REFERENCES categories(slug) ON DELETE RESTRICT,
+            title TEXT NOT NULL,
+            orientation TEXT NOT NULL CHECK (orientation IN ('portrait', 'landscape')),
+            bundle_version INTEGER NOT NULL CHECK (bundle_version >= 1),
+            selections_json TEXT NOT NULL CHECK (json_valid(selections_json)),
+            question_count INTEGER NOT NULL CHECK (question_count BETWEEN 1 AND 50),
+            status TEXT NOT NULL
+                CHECK (status IN ('queued', 'rendering', 'complete', 'failed', 'interrupted')),
+            job_id TEXT,
+            file_name TEXT,
+            file_path TEXT,
+            file_bytes INTEGER,
+            duration_seconds REAL,
+            error TEXT,
+            created_at TEXT NOT NULL,
+            completed_at TEXT,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE INDEX idx_studio_videos_category
+            ON studio_videos(category_slug, created_at DESC);
+        CREATE INDEX idx_studio_videos_job ON studio_videos(job_id);
+        """,
+    ),
 ]
 
 
@@ -1271,3 +1300,128 @@ class QuizDatabase:
                 (job_id, after),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def create_studio_video(self, item: dict[str, Any]) -> dict[str, Any]:
+        self.migrate()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO studio_videos(
+                    id, category_slug, title, orientation, bundle_version,
+                    selections_json, question_count, status, job_id,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    item["id"],
+                    item["category_slug"],
+                    item["title"],
+                    item["orientation"],
+                    item["bundle_version"],
+                    json.dumps(item["selections"], ensure_ascii=True),
+                    item["question_count"],
+                    item["status"],
+                    item.get("job_id"),
+                    item["created_at"],
+                    item["updated_at"],
+                ),
+            )
+        return self.studio_video(item["id"])
+
+    def update_studio_video(
+        self,
+        video_id: str,
+        *,
+        status: str,
+        updated_at: str,
+        job_id: str | None = None,
+        file_name: str | None = None,
+        file_path: str | None = None,
+        file_bytes: int | None = None,
+        duration_seconds: float | None = None,
+        error: str | None = None,
+    ) -> dict[str, Any]:
+        completed_at = updated_at if status in {"complete", "failed"} else None
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE studio_videos SET
+                    status = ?,
+                    job_id = COALESCE(?, job_id),
+                    file_name = COALESCE(?, file_name),
+                    file_path = COALESCE(?, file_path),
+                    file_bytes = COALESCE(?, file_bytes),
+                    duration_seconds = COALESCE(?, duration_seconds),
+                    error = ?,
+                    completed_at = COALESCE(?, completed_at),
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    status,
+                    job_id,
+                    file_name,
+                    file_path,
+                    file_bytes,
+                    duration_seconds,
+                    error,
+                    completed_at,
+                    updated_at,
+                    video_id,
+                ),
+            )
+        return self.studio_video(video_id)
+
+    def attach_studio_video_job(
+        self, video_id: str, *, job_id: str, updated_at: str
+    ) -> dict[str, Any]:
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE studio_videos
+                SET job_id = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (job_id, updated_at, video_id),
+            )
+        return self.studio_video(video_id)
+
+    def studio_video(self, video_id: str) -> dict[str, Any]:
+        self.migrate()
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM studio_videos WHERE id = ?", (video_id,)
+            ).fetchone()
+        if row is None:
+            raise KeyError(video_id)
+        result = dict(row)
+        result["selections"] = json.loads(result.pop("selections_json"))
+        return result
+
+    def studio_videos(self, category_slug: str, *, limit: int = 100) -> list[dict[str, Any]]:
+        self.migrate()
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id FROM studio_videos
+                WHERE category_slug = ?
+                ORDER BY created_at DESC LIMIT ?
+                """,
+                (category_slug, limit),
+            ).fetchall()
+        return [self.studio_video(row["id"]) for row in rows]
+
+    def mark_interrupted_videos(self, updated_at: str) -> int:
+        self.migrate()
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE studio_videos
+                SET status = 'interrupted',
+                    error = 'The service restarted before rendering completed.',
+                    updated_at = ?
+                WHERE status IN ('queued', 'rendering')
+                """,
+                (updated_at,),
+            )
+        return cursor.rowcount

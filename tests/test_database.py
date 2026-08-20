@@ -11,8 +11,90 @@ def lion_document() -> PlanDocument:
 
 def test_migrations_are_idempotent(tmp_path: Path) -> None:
     database = QuizDatabase(tmp_path / "quiz.db")
-    assert database.migrate() == [1, 2, 3, 4, 5]
+    assert database.migrate() == [1, 2, 3, 4, 5, 6]
     assert database.migrate() == []
+
+
+def test_video_catalog_persists_render_history(tmp_path: Path) -> None:
+    database = QuizDatabase(tmp_path / "quiz.db")
+    category = database.create_category(
+        name="Geography",
+        slug="geography",
+        display_title="GEOGRAPHY QUIZ",
+        display_tag="Geography",
+        description="Places and features of the world.",
+        editorial_brief="Child-facing geography with deterministic answers.",
+        age_min=5,
+        age_max=10,
+    )
+    created = database.create_studio_video(
+        {
+            "id": "video-1",
+            "category_slug": category["slug"],
+            "title": "Geography · Landscape · 20 questions",
+            "orientation": "landscape",
+            "bundle_version": 3,
+            "selections": [
+                {"set_id": "geography_beginner_01", "question_count": 10},
+                {"set_id": "geography_beginner_02", "question_count": 10},
+            ],
+            "question_count": 20,
+            "status": "queued",
+            "created_at": "2026-08-20T10:00:00+00:00",
+            "updated_at": "2026-08-20T10:00:00+00:00",
+        }
+    )
+    assert created["selections"][1]["set_id"] == "geography_beginner_02"
+
+    database.attach_studio_video_job(
+        "video-1",
+        job_id="job-1",
+        updated_at="2026-08-20T10:01:00+00:00",
+    )
+    complete = database.update_studio_video(
+        "video-1",
+        status="complete",
+        file_name="geography.mp4",
+        file_path="/tmp/geography.mp4",
+        file_bytes=2048,
+        duration_seconds=240.5,
+        updated_at="2026-08-20T10:05:00+00:00",
+    )
+
+    assert complete["job_id"] == "job-1"
+    assert complete["duration_seconds"] == 240.5
+    assert database.studio_videos("geography")[0]["file_name"] == "geography.mp4"
+
+
+def test_interrupted_video_render_is_recovered(tmp_path: Path) -> None:
+    database = QuizDatabase(tmp_path / "quiz.db")
+    database.create_category(
+        name="Space",
+        slug="space",
+        display_title="SPACE QUIZ",
+        display_tag="Space",
+        description="Planets and exploration.",
+        editorial_brief="Age-appropriate facts about space.",
+        age_min=5,
+        age_max=10,
+    )
+    database.create_studio_video(
+        {
+            "id": "video-running",
+            "category_slug": "space",
+            "title": "Space · Portrait · 10 questions",
+            "orientation": "portrait",
+            "bundle_version": 1,
+            "selections": [{"set_id": "space_beginner_01", "question_count": 10}],
+            "question_count": 10,
+            "status": "rendering",
+            "created_at": "2026-08-20T10:00:00+00:00",
+            "updated_at": "2026-08-20T10:00:00+00:00",
+        }
+    )
+
+    assert database.mark_interrupted_videos("2026-08-20T10:02:00+00:00") == 1
+    assert database.studio_video("video-running")["status"] == "interrupted"
 
 
 def test_category_metadata_is_persisted_and_slug_is_immutable(tmp_path: Path) -> None:

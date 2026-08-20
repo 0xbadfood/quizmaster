@@ -157,39 +157,56 @@ def _copy_presentation_assets(
     return copied
 
 
-def prepare(
+def prepare_sets(
     category: str,
-    difficulty: str,
-    number: int,
+    selections: list[tuple[str, int, list[int] | None]],
     *,
     orientation: str = "portrait",
-    question_numbers: list[int] | None = None,
+    bundle_version: int | None = None,
 ) -> Path:
     if orientation not in ORIENTATION_SIZE:
         raise ValueError(f"unsupported orientation: {orientation}")
+    if not selections:
+        raise ValueError("select at least one quiz set")
+    selection_keys = [(difficulty, number) for difficulty, number, _ in selections]
+    if len(selection_keys) != len(set(selection_keys)):
+        raise ValueError("quiz set selection contains duplicates")
     pointer = _read_json(BUNDLE_ROOT / category / "current.json")
-    version = int(pointer["bundle_version"])
+    version = bundle_version or int(pointer["bundle_version"])
     content = BUNDLE_ROOT / category / f"versions/{version:06d}/content"
     category_document = _read_json(content / "category.json")
-    quiz_record = next(
-        (
-            item
-            for item in category_document["quizzes"]
-            if item["difficulty"] == difficulty and int(item["number"]) == number
-        ),
-        None,
-    )
-    if quiz_record is None:
-        raise ValueError(f"quiz not found: {category}/{difficulty}/{number}")
-
-    quiz = _read_json(content / quiz_record["questions_file"])
-    if len(quiz["questions"]) != 10:
-        raise ValueError("video rendering requires quiz sets with exactly ten questions")
-    selected_numbers = question_numbers or list(range(1, 11))
-    invalid = sorted(number for number in selected_numbers if number < 1 or number > 10)
-    if invalid:
-        raise ValueError(f"question numbers must be between 1 and 10: {invalid}")
     audio_manifest = _read_json(content / "source/category-audio-manifest.json")
+
+    selected_questions: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    selected_records: list[dict[str, Any]] = []
+    for difficulty, number, question_numbers in selections:
+        quiz_record = next(
+            (
+                item
+                for item in category_document["quizzes"]
+                if item["difficulty"] == difficulty
+                and int(item["number"]) == number
+            ),
+            None,
+        )
+        if quiz_record is None:
+            raise ValueError(f"quiz not found: {category}/{difficulty}/{number}")
+        quiz = _read_json(content / quiz_record["questions_file"])
+        if len(quiz["questions"]) != 10:
+            raise ValueError(
+                "video rendering requires quiz sets with exactly ten questions"
+            )
+        selected_numbers = question_numbers or list(range(1, 11))
+        invalid = sorted(
+            value for value in selected_numbers if value < 1 or value > 10
+        )
+        if invalid:
+            raise ValueError(f"question numbers must be between 1 and 10: {invalid}")
+        selected_records.append(quiz_record)
+        selected_questions.extend(
+            (quiz, quiz["questions"][source_number - 1])
+            for source_number in selected_numbers
+        )
 
     public_quiz = RENDERER_ROOT / "public/quiz"
     if public_quiz.exists():
@@ -214,10 +231,7 @@ def prepare(
 
     copied_answers: dict[str, str] = {}
     questions = []
-    for display_number, source_number in _display_question_sequence(
-        selected_numbers
-    ):
-        question = quiz["questions"][source_number - 1]
+    for display_number, (quiz, question) in enumerate(selected_questions, start=1):
         question_id = question["question_id"]
         audio = audio_manifest["questions"].get(question_id)
         if not audio:
@@ -275,9 +289,20 @@ def prepare(
     generated = {
         "schemaVersion": "quiz_video_input_v1",
         "category": category_document["category"]["name"],
-        "title": quiz_record["title"],
-        "difficulty": difficulty.title(),
-        "quizId": quiz_record["quiz_id"],
+        "title": (
+            selected_records[0]["title"]
+            if len(selected_records) == 1
+            else (
+                category_document["category"].get("display_title")
+                or f"{category_document['category']['name']} Quiz"
+            )
+        ),
+        "difficulty": (
+            selected_records[0]["difficulty"].title()
+            if len({item["difficulty"] for item in selected_records}) == 1
+            else "Mixed"
+        ),
+        "quizId": "+".join(item["quiz_id"] for item in selected_records),
         "width": width,
         "height": height,
         "fps": 30,
@@ -293,11 +318,26 @@ def prepare(
         encoding="utf-8",
     )
     print(
-        f"Prepared {quiz_record['quiz_id']} from bundle v{version} with "
+        f"Prepared {len(selected_records)} set(s) from bundle v{version} with "
         f"{len(questions)} questions and {len(copied_answers)} answer images "
         f"for {orientation} rendering."
     )
     return output
+
+
+def prepare(
+    category: str,
+    difficulty: str,
+    number: int,
+    *,
+    orientation: str = "portrait",
+    question_numbers: list[int] | None = None,
+) -> Path:
+    return prepare_sets(
+        category,
+        [(difficulty, number, question_numbers)],
+        orientation=orientation,
+    )
 
 
 def main() -> None:

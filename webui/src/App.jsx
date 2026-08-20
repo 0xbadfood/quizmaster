@@ -14,6 +14,7 @@ import {
   Database,
   Download,
   FileQuestion,
+  Film,
   Gauge,
   Headphones,
   Image,
@@ -23,7 +24,9 @@ import {
   LockKeyhole,
   LoaderCircle,
   LogOut,
+  Monitor,
   Pencil,
+  Play,
   PackageCheck,
   Plus,
   RefreshCw,
@@ -32,6 +35,7 @@ import {
   Server,
   Shuffle,
   Settings2,
+  Smartphone,
   Sparkles,
   History,
   TestTube2,
@@ -51,6 +55,7 @@ const STAGES = [
   { id: 'visuals', label: 'Visuals', enabled: true },
   { id: 'audio', label: 'Audio', enabled: true },
   { id: 'publish', label: 'Publish', enabled: true },
+  { id: 'video', label: 'Video', enabled: true },
 ]
 
 const PROVIDER_META = {
@@ -1011,6 +1016,142 @@ function ActivateReleaseDialog({ category, release, onClose, onActivated }) {
   return <div className="dialog-backdrop"><section className="dialog" role="dialog" aria-modal="true"><header><div><p className="kicker">RELEASE HISTORY</p><h2>Activate version {release.bundle_version}</h2></div><button className="icon-button quiet" title="Close" onClick={onClose}><X size={18} /></button></header><div className="activation-dialog"><div className="publish-dialog-summary"><span><strong>{release.quiz_count}</strong><small>Quiz sets</small></span><span><strong>{release.question_count}</strong><small>Questions</small></span><span><strong>{formatBytes(release.archive_bytes)}</strong><small>Archive</small></span></div><code>{release.content_hash}</code>{error && <div className="inline-error"><CircleAlert size={15} />{error}</div>}<div className="dialog-actions"><button className="button secondary" onClick={onClose}>Cancel</button><button className="button primary" disabled={busy} onClick={activate}>{busy ? <LoaderCircle className="spin" size={15} /> : <History size={15} />}Activate version</button></div></div></section></div>
 }
 
+function formatDuration(value) {
+  const seconds = Math.max(0, Math.round(Number(value || 0)))
+  if (!seconds) return '-'
+  const minutes = Math.floor(seconds / 60)
+  return `${minutes}:${String(seconds % 60).padStart(2, '0')}`
+}
+
+function VideoWorkspace({ category, onStage, onJob, refreshToken }) {
+  const [payload, setPayload] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [orientation, setOrientation] = useState('all')
+  const [dialog, setDialog] = useState(null)
+
+  async function loadVideos() {
+    if (!category) return
+    setLoading(true)
+    setError('')
+    try {
+      setPayload(await api(`/api/studio/categories/${category.slug}/videos`))
+    } catch (requestError) {
+      setError(requestError.message)
+      setPayload(null)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { loadVideos() }, [category?.slug, refreshToken])
+  const allVideos = payload?.videos || []
+  const videos = allVideos.filter((item) => orientation === 'all' || item.orientation === orientation)
+  const completed = allVideos.filter((item) => item.status === 'complete')
+  const rendering = allVideos.filter((item) => ['queued', 'rendering'].includes(item.status))
+  const totalMinutes = Math.round(completed.reduce((sum, item) => sum + Number(item.duration_seconds || 0), 0) / 60)
+
+  return <div className="video-studio-layout">
+    <section className="video-canvas">
+      <StageNavigation active="video" onStage={onStage} />
+      <div className="question-toolbar">
+        <div><p className="kicker">VIDEO LIBRARY</p><h1>{category.name}</h1></div>
+        <div className="question-actions">
+          <button className="button secondary" onClick={loadVideos}><RefreshCw size={15} />Refresh</button>
+          <button className="button primary" disabled={!payload?.can_create} onClick={() => setDialog({ type: 'create' })}><Film size={15} />Create video</button>
+        </div>
+      </div>
+      <div className="bank-summary">
+        <BankStat value={allVideos.length} label="Video records" detail="All render attempts" tone="blue" />
+        <BankStat value={completed.length} label="Ready" detail="Playable and downloadable" tone="green" />
+        <BankStat value={rendering.length} label="Rendering" detail="Queued or active" tone="amber" />
+        <BankStat value={totalMinutes} label="Runtime" detail="Completed minutes" tone="violet" />
+      </div>
+      <div className="video-scroll">
+        <div className="video-index-heading">
+          <div><p className="kicker">RENDER HISTORY</p><h2>Created videos</h2></div>
+          <div className="segmented-control compact">{['all', 'landscape', 'portrait'].map((value) => <button className={orientation === value ? 'active' : ''} key={value} onClick={() => setOrientation(value)}>{value}</button>)}</div>
+        </div>
+        {payload?.blocked_reason && <div className="video-blocked"><CircleAlert size={16} /><span>{payload.blocked_reason}</span></div>}
+        {loading && [...Array(5)].map((_, index) => <div className="publish-skeleton" key={index} />)}
+        {!loading && videos.length > 0 && <div className="video-table-shell">
+          <div className="video-table-head"><span>Video</span><span>Source sets</span><span>Runtime</span><span>Created</span><span>Status</span><span /></div>
+          {videos.map((video) => <button className="video-row" key={video.id} onClick={() => setDialog({ type: 'preview', video })}>
+            <span className="video-primary"><span className={`video-format ${video.orientation}`}>{video.orientation === 'landscape' ? <Monitor size={18} /> : <Smartphone size={18} />}</span><span className="video-name"><strong>{video.title}</strong><small>{video.orientation} · {video.question_count} questions · bundle v{video.bundle_version}</small></span></span>
+            <span><strong>{video.selections.map((item) => item.title || `Set ${item.number}`).join(', ')}</strong><small>{video.selections.length} set{video.selections.length === 1 ? '' : 's'}</small></span>
+            <span><strong>{formatDuration(video.duration_seconds)}</strong><small>{video.file_bytes ? formatBytes(video.file_bytes) : 'Pending'}</small></span>
+            <span><strong>{new Date(video.created_at).toLocaleDateString()}</strong><small>{new Date(video.created_at).toLocaleTimeString()}</small></span>
+            <span><StatusBadge status={video.status} /></span>
+            <span className="video-row-action">{video.status === 'complete' ? <Play size={15} /> : <ArrowRight size={15} />}</span>
+          </button>)}
+        </div>}
+        {!loading && !videos.length && <EmptyState icon={Film} title="No videos in this view" detail="Create a video from one or more published quiz sets." />}
+      </div>
+      {error && <div className="bank-error"><CircleAlert size={15} />{error}<button title="Dismiss" onClick={() => setError('')}><X size={15} /></button></div>}
+    </section>
+    {dialog?.type === 'create' && <VideoCreateDialog category={category} payload={payload} onClose={() => setDialog(null)} onQueued={async (job) => { setDialog(null); onJob(job); await loadVideos() }} />}
+    {dialog?.type === 'preview' && <VideoPreviewDialog video={dialog.video} onClose={() => setDialog(null)} />}
+  </div>
+}
+
+function VideoCreateDialog({ category, payload, onClose, onQueued }) {
+  const firstAvailable = payload.backgrounds?.landscape ? 'landscape' : 'portrait'
+  const [orientation, setOrientation] = useState(firstAvailable)
+  const [selected, setSelected] = useState([])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const maximum = payload.limits?.[orientation] || (orientation === 'landscape' ? 50 : 10)
+  const setMap = new Map(payload.sets.map((item) => [item.set_id, item]))
+  const questionCount = selected.reduce((sum, id) => sum + Number(setMap.get(id)?.question_count || 0), 0)
+
+  function chooseOrientation(value) {
+    setOrientation(value)
+    setSelected((current) => value === 'portrait' ? current.slice(0, 1) : current)
+  }
+
+  function toggleSet(item) {
+    setSelected((current) => {
+      if (current.includes(item.set_id)) return current.filter((id) => id !== item.set_id)
+      const currentCount = current.reduce((sum, id) => sum + Number(setMap.get(id)?.question_count || 0), 0)
+      if (currentCount + item.question_count > maximum) return current
+      return [...current, item.set_id]
+    })
+  }
+
+  async function submit(event) {
+    event.preventDefault()
+    setBusy(true)
+    setError('')
+    try {
+      await onQueued(await post(`/api/studio/categories/${category.slug}/videos`, { orientation, set_ids: selected }))
+    } catch (requestError) {
+      setError(requestError.message)
+      setBusy(false)
+    }
+  }
+
+  return <div className="dialog-backdrop"><section className="dialog video-create-dialog" role="dialog" aria-modal="true"><header><div><p className="kicker">NEW RENDER</p><h2>Create {category.name} video</h2></div><button className="icon-button quiet" title="Close" onClick={onClose}><X size={18} /></button></header><form onSubmit={submit}>
+    <div className="video-orientation-options">
+      <button type="button" className={orientation === 'landscape' ? 'active' : ''} disabled={!payload.backgrounds?.landscape} onClick={() => chooseOrientation('landscape')}><Monitor size={20} /><span><strong>Landscape</strong><small>Up to 50 questions</small></span>{orientation === 'landscape' && <Check size={16} />}</button>
+      <button type="button" className={orientation === 'portrait' ? 'active' : ''} disabled={!payload.backgrounds?.portrait} onClick={() => chooseOrientation('portrait')}><Smartphone size={20} /><span><strong>Portrait</strong><small>Up to 10 questions</small></span>{orientation === 'portrait' && <Check size={16} />}</button>
+    </div>
+    <div className="video-selection-summary"><span><strong>{selected.length}</strong><small>Sets</small></span><span><strong>{questionCount}</strong><small>Questions</small></span><span><strong>{maximum - questionCount}</strong><small>Available</small></span></div>
+    <div className="video-set-list">{['beginner', 'intermediate'].map((difficulty) => <div className="video-set-group" key={difficulty}><div><span className={`difficulty-mark ${difficulty}`}>{difficulty === 'beginner' ? 'B' : 'I'}</span><strong>{difficulty}</strong></div>{payload.sets.filter((item) => item.difficulty === difficulty).map((item) => { const checked = selected.includes(item.set_id); const disabled = !checked && questionCount + item.question_count > maximum; return <button type="button" className={checked ? 'selected' : ''} disabled={disabled} key={item.set_id} onClick={() => toggleSet(item)}><span className="video-checkbox">{checked && <Check size={13} />}</span><span><strong>{item.title}</strong><small>Set {item.number} · {item.question_count} questions</small></span></button> })}</div>)}</div>
+    {error && <div className="inline-error"><CircleAlert size={15} />{error}</div>}
+    <div className="dialog-actions"><button type="button" className="button secondary" onClick={onClose}>Cancel</button><button className="button primary" disabled={busy || !selected.length}>{busy ? <LoaderCircle className="spin" size={15} /> : <Film size={15} />}Start render</button></div>
+  </form></section></div>
+}
+
+function VideoPreviewDialog({ video, onClose }) {
+  const ready = video.status === 'complete' && video.stream_url
+  return <div className="dialog-backdrop"><section className="dialog video-preview-dialog" role="dialog" aria-modal="true"><header><div><p className="kicker">VIDEO DETAILS</p><h2>{video.title}</h2></div><button className="icon-button quiet" title="Close" onClick={onClose}><X size={18} /></button></header><div className="video-preview-body">
+    {ready ? <video controls preload="metadata" src={video.stream_url}>Your browser cannot play this video.</video> : <div className="video-preview-pending">{['queued', 'rendering'].includes(video.status) ? <LoaderCircle className="spin" size={30} /> : <CircleAlert size={30} />}<strong>{video.status === 'interrupted' ? 'Render interrupted' : video.status === 'failed' ? 'Render failed' : 'Render in progress'}</strong><span>{video.error || 'Progress is available in the jobs drawer.'}</span></div>}
+    <div className="video-preview-meta"><span><small>Format</small><strong>{video.orientation}</strong></span><span><small>Questions</small><strong>{video.question_count}</strong></span><span><small>Runtime</small><strong>{formatDuration(video.duration_seconds)}</strong></span><span><small>File size</small><strong>{video.file_bytes ? formatBytes(video.file_bytes) : '-'}</strong></span></div>
+    <div className="video-preview-sets"><small>SOURCE SETS</small><span>{video.selections.map((item) => item.title || `Set ${item.number}`).join(' · ')}</span></div>
+    <div className="dialog-actions"><button className="button secondary" onClick={onClose}>Close</button>{ready && <a className="button primary" href={video.download_url}><Download size={15} />Download MP4</a>}</div>
+  </div></section></div>
+}
+
 function StatusIcon({ status }) {
   if (status === 'ready' || status === 'published') return <span className={`status-icon ${status}`}><Check size={16} /></span>
   if (status === 'attention') return <span className="status-icon attention"><CircleAlert size={16} /></span>
@@ -1353,7 +1494,7 @@ export default function App() {
   return <div className="app-shell">
     <AppHeader view={view} category={selectedCategory} onView={setView} onLogout={logout} healthyProviders={healthyProviders} totalProviders={providers.length} />
     {error && <div className="global-error"><CircleAlert size={17} /><span>{error}</span><button title="Dismiss" onClick={() => setError('')}><X size={16} /></button></div>}
-    {view === 'workspace' ? <main className="workspace-shell"><CategorySidebar categories={categories} selected={selectedSlug} onSelect={setSelectedSlug} loading={loading} onRefresh={loadCategories} onCreate={() => setCategoryDialog('create')} />{activeStage === 'questions' ? <QuestionBankWorkspace category={selectedCategory} providers={providers} onStage={setActiveStage} onJob={registerJob} refreshToken={studioRevision} onCategoryRefresh={loadCategories} /> : activeStage === 'sets' ? <QuizSetsWorkspace category={selectedCategory} providers={providers} onStage={setActiveStage} onJob={registerJob} refreshToken={studioRevision} onCategoryRefresh={loadCategories} /> : activeStage === 'visuals' ? <VisualsWorkspace category={selectedCategory} providers={providers} onStage={setActiveStage} onJob={registerJob} refreshToken={studioRevision} onCategoryRefresh={loadCategories} /> : activeStage === 'audio' ? <AudioWorkspace category={selectedCategory} providers={providers} onStage={setActiveStage} onJob={registerJob} refreshToken={studioRevision} onCategoryRefresh={loadCategories} /> : activeStage === 'publish' ? <PublishWorkspace category={selectedCategory} onStage={setActiveStage} onJob={registerJob} refreshToken={studioRevision} onCategoryRefresh={loadCategories} /> : <OverviewWorkspace category={selectedCategory} onStage={setActiveStage} onEdit={() => setCategoryDialog(selectedCategory)} />}</main> : <ProviderAdmin providers={providers} selectedId={selectedProviderId} onSelect={setSelectedProviderId} onReload={loadProviders} onJob={registerJob} onCreate={() => setAddingProvider(true)} />}
+    {view === 'workspace' ? <main className="workspace-shell"><CategorySidebar categories={categories} selected={selectedSlug} onSelect={setSelectedSlug} loading={loading} onRefresh={loadCategories} onCreate={() => setCategoryDialog('create')} />{activeStage === 'questions' ? <QuestionBankWorkspace category={selectedCategory} providers={providers} onStage={setActiveStage} onJob={registerJob} refreshToken={studioRevision} onCategoryRefresh={loadCategories} /> : activeStage === 'sets' ? <QuizSetsWorkspace category={selectedCategory} providers={providers} onStage={setActiveStage} onJob={registerJob} refreshToken={studioRevision} onCategoryRefresh={loadCategories} /> : activeStage === 'visuals' ? <VisualsWorkspace category={selectedCategory} providers={providers} onStage={setActiveStage} onJob={registerJob} refreshToken={studioRevision} onCategoryRefresh={loadCategories} /> : activeStage === 'audio' ? <AudioWorkspace category={selectedCategory} providers={providers} onStage={setActiveStage} onJob={registerJob} refreshToken={studioRevision} onCategoryRefresh={loadCategories} /> : activeStage === 'publish' ? <PublishWorkspace category={selectedCategory} onStage={setActiveStage} onJob={registerJob} refreshToken={studioRevision} onCategoryRefresh={loadCategories} /> : activeStage === 'video' ? <VideoWorkspace category={selectedCategory} onStage={setActiveStage} onJob={registerJob} refreshToken={studioRevision} /> : <OverviewWorkspace category={selectedCategory} onStage={setActiveStage} onEdit={() => setCategoryDialog(selectedCategory)} />}</main> : <ProviderAdmin providers={providers} selectedId={selectedProviderId} onSelect={setSelectedProviderId} onReload={loadProviders} onJob={registerJob} onCreate={() => setAddingProvider(true)} />}
     <JobsDrawer jobs={jobs} expanded={jobsOpen} onToggle={() => setJobsOpen((current) => !current)} />
     {addingProvider && <AddProviderDialog onClose={() => setAddingProvider(false)} onCreated={providerCreated} />}
     {categoryDialog && <CategoryDialog category={categoryDialog === 'create' ? null : categoryDialog} onClose={() => setCategoryDialog(null)} onSaved={categorySaved} />}
