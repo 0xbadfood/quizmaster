@@ -351,6 +351,40 @@ def test_landscape_validator_accepts_between_and_percentage_wording() -> None:
     )
 
 
+def test_portrait_video_validator_accepts_four_answer_boxes_wording() -> None:
+    prompt = build_background_prompt(
+        category="Food",
+        display_title="FOOD QUIZ",
+        layout="video_portrait",
+    ).replace(
+        "four answer panels in a two-by-two grid",
+        "one large question box and four answer boxes",
+    )
+    plan = BackgroundPromptPlan(
+        schema_version="quiz_background_prompt_plan_v1",
+        visual_summary="A light food quiz scene with an unobtrusive title banner.",
+        scene_concept=(
+            "A bright kitchen frames a calm central field for educational quiz "
+            "content while small food details remain near the outer edges."
+        ),
+        focal_elements=["Shallow title banner", "Calm kitchen", "Edge details"],
+        composition=(
+            "A 9:16 portrait leaves open regions for a question and four answers."
+        ),
+        palette_and_lighting=(
+            "High-key pale colors, diffuse daylight, and restrained contrast."
+        ),
+        prompt=prompt,
+    )
+
+    _validate_prompt_plan(
+        plan,
+        display_title="FOOD QUIZ",
+        subtitle="",
+        layout="video_portrait",
+    )
+
+
 def test_landscape_validator_rejects_adventure_subtitle() -> None:
     prompt = build_background_prompt(
         category="Geography",

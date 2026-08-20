@@ -281,6 +281,12 @@ def _validate_prompt_plan(
         answer_grid = any(
             marker in folded_compact
             for marker in ("two-by-two", "two by two", "2x2", "two rows")
+        ) or bool(
+            re.search(
+                r"\bfour\b(?:\s+\S+){0,5}\s+answer\s+"
+                r"(?:boxes|cards|panels|choices|options)\b",
+                folded_compact,
+            )
         )
         if not answer_grid:
             raise ValueError(
