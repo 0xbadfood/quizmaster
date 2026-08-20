@@ -69,13 +69,21 @@ def build_background_planning_prompt(
     guidance = category_guidance.strip() if category_guidance else "None supplied."
     if layout == "landscape":
         production_contract = """- The normalized video asset is exactly 1920x1080 pixels in a true 16:9 landscape composition.
-- Reserve roughly the top 30 percent for a large dimensional title emblem containing
-  the exact main title and a smaller ribbon containing the exact subtitle.
-- Keep the center from 30 to 62 percent calm, lower contrast, and relatively
-  uncluttered for a wide question panel.
-- Keep the lower center from 62 to 96 percent calm enough for four answer cards in
-  one horizontal row. Put category storytelling and decoration mainly at the far
-  left and right edges and behind the title.
+- HARD HEADER LIMIT: confine the complete title emblem and subtitle ribbon to one
+  shallow banner at the very top. The assembly must fit entirely inside the upper
+  20 percent of the final frame, with its lower edge above y=20%. Scale the lettering
+  down as needed, center it, and keep it within roughly 70 percent of the frame width;
+  never let the banner expand into the quiz content area or touch the side edges.
+- Keep y=20% to y=52% calm and open for one large, wide question panel.
+- Keep y=52% to y=96% calm and open for four horizontal answer panels arranged as a
+  two-by-two grid: two wide choices per row and two rows. Do not plan one row of four.
+- Outside the shallow header, use a high-key, light-toned, low-contrast background:
+  pale sky colors, soft cool neutrals, restrained pastels, and diffuse daylight.
+  Avoid dominant navy, black, saturated neon, dramatic contrast, heavy vignettes,
+  bright central glows, and busy textures so the quiz panels remain the focal point.
+- Keep category storytelling small, subtle, and mainly within the outer 12 percent,
+  corners, or distant background. Do not place large characters, landmarks, planets,
+  or other focal subjects behind the question and answer safe regions.
 - Keep all critical content inside a centered 16:9 crop with expendable scenery at
   the extreme top and bottom because some providers return a wider 3:2 source."""
     else:
@@ -143,6 +151,40 @@ def _validate_prompt_plan(
         if not landscape:
             raise ValueError(
                 "background prompt must explicitly request landscape composition"
+            )
+        shallow_header = "banner" in folded and any(
+            marker in folded
+            for marker in (
+                "top 20 percent",
+                "upper 20 percent",
+                "top 20%",
+                "upper 20%",
+                "top fifth",
+                "upper fifth",
+            )
+        )
+        if not shallow_header:
+            raise ValueError(
+                "landscape background prompt must confine the banner to the upper 20 percent"
+            )
+        light_field = any(
+            marker in folded
+            for marker in ("high-key", "light-toned", "pale", "soft pastel")
+        ) and any(
+            marker in folded
+            for marker in ("low-contrast", "low contrast", "restrained contrast")
+        )
+        if not light_field:
+            raise ValueError(
+                "landscape background prompt must request a light, low-contrast content field"
+            )
+        answer_grid = any(
+            marker in folded
+            for marker in ("two-by-two", "two by two", "2x2", "two rows")
+        )
+        if not answer_grid:
+            raise ValueError(
+                "landscape background prompt must reserve a two-by-two answer grid"
             )
     else:
         vertical_mobile = "vertical" in folded and any(
@@ -413,18 +455,28 @@ def build_background_prompt(
         else f"Use iconic places, objects, and atmosphere associated with {category}."
     )
     if layout == "landscape":
-        layout_direction = """The final image is a true 16:9 landscape video background. Reserve the top 30
-percent for the title, keep the central band calm for a wide question panel, and keep
-the lower center calm for four answer cards in one horizontal row. Place supporting
-scenery mainly at the far left and right edges."""
+        layout_direction = """The final image is a true 16:9 landscape video background. Confine the exact
+title and subtitle to one shallow banner entirely within the upper 20 percent; its
+lower edge must remain above y=20%. Center it within roughly 70 percent of the frame
+width rather than stretching it edge to edge. Keep y=20% to y=52% open for a wide question
+panel and y=52% to y=96% open for four horizontal answer panels in a two-by-two grid.
+Outside the header, use a high-key, light-toned, low-contrast field with pale sky
+colors, soft cool neutrals, restrained pastels, and diffuse daylight. Avoid dominant
+dark colors, saturated neon, dramatic contrast, heavy vignettes, and bright central
+glows. Keep supporting scenery small and subtle at the far edges and corners."""
+        style_direction = """Use a polished family-friendly 3D animated illustration
+aesthetic with clean soft depth, restrained color, diffuse high-key lighting, and
+crisp but unobtrusive edge details."""
     else:
         layout_direction = """The final image fills a tall mobile screen. Reserve the top 28 percent for the
 title and keep the middle calmer and lower-contrast for Flutter question and answer
 controls. Place supporting scenery mainly around the outer edges and lower third."""
+        style_direction = """Use a high-end family-friendly 3D animated illustration
+aesthetic, rich natural color, cinematic light, appealing depth, and crisp readable
+silhouettes."""
     return f"""Create one polished {layout} background for a children's {category} quiz.
 {layout_direction} Build one coherent, immersive scene rather
-than a collage. Use a high-end family-friendly 3D animated illustration aesthetic,
-rich natural color, cinematic light, appealing depth, and crisp readable silhouettes.
+than a collage. {style_direction}
 
 Visual direction: {subject_guidance}
 

@@ -4,10 +4,12 @@ import io
 import json
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
 from quiz_harness.background_images import (
     BACKGROUND_SIZE,
+    BackgroundPromptPlan,
     LANDSCAPE_BACKGROUND_SIZE,
     _parse_prompt_plan,
     _validate_prompt_plan,
@@ -206,7 +208,65 @@ def test_qwen_landscape_prompt_defines_video_safe_areas() -> None:
 
     assert "1920x1080" in prompt
     assert "true 16:9 landscape" in prompt
-    assert "four answer cards" in prompt
+    assert "HARD HEADER LIMIT" in prompt
+    assert "20 percent of the final frame" in prompt
+    assert "two-by-two grid" in prompt
+    assert "high-key, light-toned, low-contrast" in prompt
+    assert "Do not plan one row of four" in prompt
+
+
+def test_direct_landscape_prompt_uses_shallow_light_quiz_layout() -> None:
+    prompt = build_background_prompt(
+        category="Geography",
+        display_title="GEOGRAPHY QUIZ",
+        subtitle="ADVENTURE",
+        layout="landscape",
+    )
+
+    assert "upper 20 percent" in prompt
+    assert "y=20% to y=52%" in prompt
+    assert "two-by-two grid" in prompt
+    assert "high-key, light-toned, low-contrast" in prompt
+    assert "Avoid dominant\ndark colors" in prompt
+    assert "rich natural color" not in prompt
+    assert "cinematic light" not in prompt
+
+
+def test_landscape_validator_rejects_legacy_oversized_banner_plan() -> None:
+    legacy_prompt = (
+        "Create a true 16:9 landscape background with the exact title GEOGRAPHY "
+        "QUIZ and subtitle ADVENTURE. Reserve the top 30 percent for a large title "
+        "emblem. Keep a central question safe area and place four answer cards in "
+        "one horizontal row. Use a rich dark blue environment with decorative "
+        "category scenery at both sides. Keep all controls and labels out of the "
+        "image and use generous crop-safe margins. "
+        + "Maintain a coherent family-friendly illustration. " * 3
+    )
+    plan = BackgroundPromptPlan(
+        schema_version="quiz_background_prompt_plan_v1",
+        visual_summary="A legacy landscape quiz background with a large title.",
+        scene_concept=(
+            "A dark geography scene frames a central quiz-safe region with maps "
+            "and landmarks around the outer edges."
+        ),
+        focal_elements=["Title emblem", "World map", "Edge landmarks"],
+        composition=(
+            "A wide landscape reserves the upper third for its title and places "
+            "four answer areas in one row below."
+        ),
+        palette_and_lighting=(
+            "Dark blue cinematic lighting with saturated gold highlights and depth."
+        ),
+        prompt=legacy_prompt,
+    )
+
+    with pytest.raises(ValueError, match="upper 20 percent"):
+        _validate_prompt_plan(
+            plan,
+            display_title="GEOGRAPHY QUIZ",
+            subtitle="ADVENTURE",
+            layout="landscape",
+        )
 
 
 def test_background_generation_reuses_matching_render(
