@@ -3,6 +3,7 @@ import {
   AbsoluteFill,
   Html5Audio,
   Img,
+  OffthreadVideo,
   Sequence,
   interpolate,
   spring,
@@ -17,6 +18,7 @@ import {
   INTRO_FRAMES,
   QUESTION_LEAD_FRAMES,
   TRANSITION_FRAMES,
+  introVideoFrames,
   questionTiming,
 } from "./timing";
 import { fitText } from "./textFit";
@@ -867,7 +869,8 @@ const FullBackground: React.FC<{ source: string; fadeIn?: boolean }> = ({
 };
 
 export const QuizVideo: React.FC<{ data: QuizVideoData }> = ({ data }) => {
-  let cursor = INTRO_FRAMES;
+  const landscapeIntroFrames = introVideoFrames(data);
+  let cursor = landscapeIntroFrames + INTRO_FRAMES;
   const sequences: React.ReactNode[] = [];
 
   data.questions.forEach((question, index) => {
@@ -907,7 +910,18 @@ export const QuizVideo: React.FC<{ data: QuizVideoData }> = ({ data }) => {
   return (
     <AbsoluteFill style={{ backgroundColor: colors.deep }}>
       <Background source={data.background} />
-      <Sequence from={0} durationInFrames={INTRO_FRAMES}>
+      {data.introVideo && landscapeIntroFrames > 0 ? (
+        <Sequence from={0} durationInFrames={landscapeIntroFrames}>
+          <OffthreadVideo
+            src={staticFile(data.introVideo)}
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
+        </Sequence>
+      ) : null}
+      <Sequence
+        from={landscapeIntroFrames}
+        durationInFrames={INTRO_FRAMES}
+      >
         <FullBackground source={data.background} fadeIn={false} />
       </Sequence>
       {sequences}

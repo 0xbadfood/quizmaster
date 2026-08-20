@@ -36,6 +36,8 @@ export type QuizVideoData = {
   fps: number;
   background: string;
   timerAudio: string;
+  introVideo?: string;
+  introVideoSeconds?: number;
   presentation: VideoPresentationAssets;
   totalQuestions: number;
   questions: VideoQuestion[];

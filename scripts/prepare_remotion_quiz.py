@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,7 @@ BUNDLE_ROOT = ROOT / "dist/category_bundles"
 RENDERER_ROOT = ROOT / "video_renderer"
 STUDIO_ROOT = ROOT / "visual_quiz_qwen"
 GLOBAL_VIDEO_ROOT = STUDIO_ROOT / "global/assets/video"
+LANDSCAPE_INTRO_SOURCE = RENDERER_ROOT / "assets/quiz-intro-landscape.mp4"
 ORIENTATION_SIZE = {
     "portrait": (1080, 1920),
     "landscape": (1920, 1080),
@@ -28,6 +30,32 @@ def _copy(source: Path, relative_target: str) -> str:
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(source, target)
     return relative_target
+
+
+def _media_duration(path: Path) -> float:
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        duration = float(result.stdout.strip())
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        raise ValueError(f"cannot read video duration from {path}: {exc}") from exc
+    if duration <= 0:
+        raise ValueError(f"video has an invalid duration: {path}")
+    return duration
 
 
 def parse_question_selection(value: str, total: int = 10) -> list[int]:
@@ -166,6 +194,11 @@ def prepare_sets(
 ) -> Path:
     if orientation not in ORIENTATION_SIZE:
         raise ValueError(f"unsupported orientation: {orientation}")
+    if orientation == "landscape" and not LANDSCAPE_INTRO_SOURCE.is_file():
+        raise ValueError(
+            "landscape intro is missing; run "
+            "'python3 scripts/build_quiz_intro.py' first"
+        )
     if not selections:
         raise ValueError("select at least one quiz set")
     selection_keys = [(difficulty, number) for difficulty, number, _ in selections]
@@ -312,6 +345,11 @@ def prepare_sets(
         "totalQuestions": len(questions),
         "questions": questions,
     }
+    if orientation == "landscape":
+        generated["introVideo"] = _copy(
+            LANDSCAPE_INTRO_SOURCE, "quiz/intro-landscape.mp4"
+        )
+        generated["introVideoSeconds"] = _media_duration(LANDSCAPE_INTRO_SOURCE)
     output = RENDERER_ROOT / "src/generated-quiz.json"
     output.write_text(
         json.dumps(generated, indent=2, ensure_ascii=True) + "\n",

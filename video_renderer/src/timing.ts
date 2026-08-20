@@ -13,6 +13,11 @@ export const FADE_FRAMES = 12;
 export const secondsToFrames = (seconds: number, fps: number) =>
   Math.ceil(seconds * fps);
 
+export const introVideoFrames = (data: QuizVideoData) =>
+  data.introVideo && data.introVideoSeconds
+    ? secondsToFrames(data.introVideoSeconds, data.fps)
+    : 0;
+
 export const questionTiming = (question: VideoQuestion, fps: number) => {
   const questionAudioFrames = secondsToFrames(
     question.questionAudioSeconds,
@@ -41,6 +46,7 @@ export const questionTiming = (question: VideoQuestion, fps: number) => {
 };
 
 export const totalDurationInFrames = (data: QuizVideoData) =>
+  introVideoFrames(data) +
   INTRO_FRAMES +
   data.questions.reduce(
     (total, question, index) =>

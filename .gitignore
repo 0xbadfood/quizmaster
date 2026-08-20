@@ -25,6 +25,8 @@ data/assets/**
 /*.png
 /freesound_community-timer-with-chime-101253.mp3
 /flora.json
+/quiz_intro_*.mp4
+/quiz_into_*.mp4
 
 # Previous standalone Flutter checkout; the maintained app lives in /app.
 /Storyvault_app/

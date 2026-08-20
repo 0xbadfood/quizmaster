@@ -467,6 +467,21 @@ Quiz Studio's managed provider storage. The default Amit transcript is: "Mumbai 
 the financial, commercial and the entertainment capital of India. It is also one of
 the world's top ten centres of commerce in terms of global financial flow."
 
+### Landscape video intro
+
+Place ordered source clips named `quiz_intro_*.mp4` (the legacy `quiz_into_*.mp4`
+spelling is also accepted) in the project root, then build the reusable intro with:
+
+```bash
+python3 scripts/build_quiz_intro.py
+```
+
+The builder normalizes every clip to 1920x1080, 30 fps H.264 with stereo 48 kHz AAC,
+then writes `video_renderer/assets/quiz-intro-landscape.mp4`. Every subsequent
+landscape render made through either `scripts.create_video` or Video Studio prefixes
+this intro automatically. Portrait videos are unchanged. Landscape preparation
+fails with a direct rebuild instruction if the canonical intro is unavailable.
+
 ### Category bundle and delivery API
 
 Build an immutable, versioned Animals category bundle after the quiz and image
