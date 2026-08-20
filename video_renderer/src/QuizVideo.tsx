@@ -176,6 +176,17 @@ const CheckMark: React.FC = () => (
 const ChoiceCard: React.FC<{
   choice: QuizChoice;
 }> = ({ choice }) => {
+  const labelFit = fitText({
+    text: choice.label,
+    maxWidth: 405,
+    maxHeight: 62,
+    maxFontSize: 40,
+    minFontSize: 28,
+    maxLines: 2,
+    lineHeight: 1.05,
+    fontFamily: '"DejaVu Sans"',
+    fontWeight: 900,
+  });
   return (
     <div
       style={{
@@ -187,25 +198,37 @@ const ChoiceCard: React.FC<{
         boxShadow: "0 12px 28px rgba(0,0,0,0.4)",
       }}
     >
-      <div style={{ height: 290, backgroundColor: colors.white }}>
+      <div
+        style={{
+          height: 282,
+          overflow: "hidden",
+          backgroundColor: colors.white,
+        }}
+      >
         <Img
           src={staticFile(choice.image)}
-          style={{ width: "100%", height: "100%", objectFit: "contain" }}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "contain",
+            transform: "scale(1.2)",
+          }}
         />
       </div>
       <div
         style={{
-          height: 64,
+          height: 72,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          padding: "0 14px 3px",
+          padding: "0 14px 4px",
           backgroundColor: colors.paper,
           color: colors.ink,
-          fontSize: choice.label.length > 18 ? 25 : 30,
-          lineHeight: 1.08,
+          fontSize: labelFit.fontSize,
+          lineHeight: labelFit.lineHeight,
           fontWeight: 900,
           textAlign: "center",
+          letterSpacing: 0,
         }}
       >
         {choice.label}
@@ -458,106 +481,119 @@ const AnswerOverlay: React.FC<{
   explanation: string;
   revealProgress: number;
   explanationProgress: number;
-}> = ({ answer, explanation, revealProgress, explanationProgress }) => (
-  <div
-    style={{
-      position: "absolute",
-      top: 675,
-      left: 70,
-      right: 70,
-      minHeight: 1090,
-      borderRadius: 8,
-      overflow: "hidden",
-      backgroundColor: "rgba(247,251,255,0.97)",
-      borderTop: `12px solid ${colors.green}`,
-      borderBottom: `12px solid ${colors.yellow}`,
-      boxShadow: "0 20px 50px rgba(0,0,0,0.52)",
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      padding: "38px 48px 44px",
-      opacity: revealProgress,
-      transform: `translateY(${(1 - revealProgress) * 70}px) scale(${0.96 + revealProgress * 0.04})`,
-    }}
-  >
+}> = ({ answer, explanation, revealProgress, explanationProgress }) => {
+  const explanationFit = fitText({
+    text: explanation,
+    maxWidth: 790,
+    maxHeight: 245,
+    maxFontSize: 50,
+    minFontSize: 34,
+    maxLines: 5,
+    lineHeight: 1.18,
+    fontFamily: '"DejaVu Sans"',
+    fontWeight: 900,
+  });
+  return (
     <div
       style={{
+        position: "absolute",
+        top: 675,
+        left: 70,
+        right: 70,
+        minHeight: 1090,
+        borderRadius: 8,
+        overflow: "hidden",
+        backgroundColor: "rgba(247,251,255,0.97)",
+        borderTop: `12px solid ${colors.green}`,
+        borderBottom: `12px solid ${colors.yellow}`,
+        boxShadow: "0 20px 50px rgba(0,0,0,0.52)",
         display: "flex",
+        flexDirection: "column",
         alignItems: "center",
-        gap: 22,
-        color: colors.greenDark,
-        fontSize: 31,
-        fontWeight: 900,
-        textTransform: "uppercase",
+        padding: "38px 48px 44px",
+        opacity: revealProgress,
+        transform: `translateY(${(1 - revealProgress) * 70}px) scale(${0.96 + revealProgress * 0.04})`,
       }}
     >
       <div
         style={{
-          width: 66,
-          height: 66,
-          borderRadius: "50%",
-          backgroundColor: colors.green,
           display: "flex",
           alignItems: "center",
-          justifyContent: "center",
+          gap: 22,
+          color: colors.greenDark,
+          fontSize: 31,
+          fontWeight: 900,
+          textTransform: "uppercase",
         }}
       >
-        <CheckMark />
+        <div
+          style={{
+            width: 66,
+            height: 66,
+            borderRadius: "50%",
+            backgroundColor: colors.green,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <CheckMark />
+        </div>
+        Correct answer
       </div>
-      Correct answer
-    </div>
-    <div
-      style={{
-        width: 520,
-        height: 520,
-        marginTop: 30,
-        backgroundColor: colors.white,
-        border: `8px solid ${colors.green}`,
-        borderRadius: 8,
-        overflow: "hidden",
-        boxShadow: "0 14px 30px rgba(0,0,0,0.25)",
-      }}
-    >
-      <Img
-        src={staticFile(answer.image)}
-        style={{ width: "100%", height: "100%", objectFit: "contain" }}
+      <div
+        style={{
+          width: 520,
+          height: 520,
+          marginTop: 30,
+          backgroundColor: colors.white,
+          border: `8px solid ${colors.green}`,
+          borderRadius: 8,
+          overflow: "hidden",
+          boxShadow: "0 14px 30px rgba(0,0,0,0.25)",
+        }}
+      >
+        <Img
+          src={staticFile(answer.image)}
+          style={{ width: "100%", height: "100%", objectFit: "contain" }}
+        />
+      </div>
+      <div
+        style={{
+          color: colors.ink,
+          fontSize: answer.label.length > 22 ? 39 : 48,
+          lineHeight: 1.08,
+          fontWeight: 900,
+          textAlign: "center",
+          marginTop: 24,
+        }}
+      >
+        {answer.label}
+      </div>
+      <div
+        style={{
+          width: "100%",
+          height: 3,
+          backgroundColor: "#d5e0e8",
+          margin: "28px 0 25px",
+        }}
       />
+      <div
+        style={{
+          color: colors.ink,
+          fontSize: explanationFit.fontSize,
+          lineHeight: explanationFit.lineHeight,
+          fontWeight: 900,
+          textAlign: "center",
+          opacity: explanationProgress,
+          transform: `translateY(${(1 - explanationProgress) * 24}px)`,
+        }}
+      >
+        {explanation}
+      </div>
     </div>
-    <div
-      style={{
-        color: colors.ink,
-        fontSize: answer.label.length > 22 ? 39 : 48,
-        lineHeight: 1.08,
-        fontWeight: 900,
-        textAlign: "center",
-        marginTop: 24,
-      }}
-    >
-      {answer.label}
-    </div>
-    <div
-      style={{
-        width: "100%",
-        height: 3,
-        backgroundColor: "#d5e0e8",
-        margin: "28px 0 25px",
-      }}
-    />
-    <div
-      style={{
-        color: colors.ink,
-        fontSize: explanation.length > 150 ? 31 : 36,
-        lineHeight: 1.22,
-        fontWeight: 800,
-        textAlign: "center",
-        opacity: explanationProgress,
-        transform: `translateY(${(1 - explanationProgress) * 24}px)`,
-      }}
-    >
-      {explanation}
-    </div>
-  </div>
-);
+  );
+};
 
 const QuestionScene: React.FC<{
   question: VideoQuestion;
