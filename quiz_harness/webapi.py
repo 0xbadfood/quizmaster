@@ -1599,7 +1599,10 @@ def download_category_release(category_slug: str, version: int) -> FileResponse:
 def _public_video(record: dict[str, Any]) -> dict[str, Any]:
     result = {key: value for key, value in record.items() if key != "file_path"}
     if record["status"] == "complete":
-        result["stream_url"] = f"/api/studio/videos/{record['id']}/stream"
+        cache_version = int(record.get("file_bytes") or 0)
+        result["stream_url"] = (
+            f"/api/studio/videos/{record['id']}/stream?v={cache_version}"
+        )
         result["download_url"] = f"/api/studio/videos/{record['id']}/download"
     else:
         result["stream_url"] = None
