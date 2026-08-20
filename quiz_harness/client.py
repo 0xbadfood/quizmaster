@@ -71,6 +71,28 @@ class VLLMClient:
                 },
             },
         }
+        return self._generate(payload)
+
+    def generate_text(
+        self,
+        *,
+        model: str,
+        messages: list[dict[str, str]],
+        seed: int,
+        temperature: float = 0.7,
+        max_tokens: int = 2_000,
+    ) -> str:
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "seed": seed,
+            "max_tokens": max_tokens,
+            "chat_template_kwargs": {"enable_thinking": False},
+        }
+        return self._generate(payload)
+
+    def _generate(self, payload: dict[str, Any]) -> str:
         try:
             response = self._client.post(
                 f"{self.base_url}/chat/completions", json=payload

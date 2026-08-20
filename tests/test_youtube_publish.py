@@ -10,6 +10,8 @@ from quiz_harness.youtube_publish import (
     authorization_url,
     deployed_video_questions,
     description_prompt,
+    generate_description,
+    normalize_description,
 )
 
 
@@ -25,6 +27,55 @@ def test_authorization_url_requests_offline_upload_access() -> None:
     assert query["access_type"] == ["offline"]
     assert query["prompt"] == ["consent"]
     assert query["state"] == ["one-time-state"]
+
+
+def test_local_description_generation_accepts_plain_text(
+    monkeypatch,
+) -> None:
+    description = (
+        "Blast off with a space quiz for curious young minds and their families. "
+        "Explore planets, stars, and space missions while learning something new.\n\n"
+        "Pause for each question, choose your answer, and stay for the explanation.\n\n"
+        "#SpaceQuiz #KidsLearning #Astronomy"
+    )
+
+    class Client:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args) -> None:
+            pass
+
+        def generate_text(self, **kwargs) -> str:
+            assert "response_format" not in kwargs
+            return description
+
+    monkeypatch.setattr("quiz_harness.youtube_publish.VLLMClient", Client)
+    result = generate_description(
+        video={
+            "title": "Space Quiz",
+            "category_slug": "space",
+            "selections": [{"set_id": "space_beginner_01"}],
+            "question_count": 10,
+        },
+        questions=[],
+        provider={
+            "provider_type": "openai_compatible_llm",
+            "base_url": "http://qwen.example/v1",
+        },
+        model="qwen",
+        secret=None,
+    )
+
+    assert result == description
+
+
+def test_description_normalizer_accepts_legacy_json_wrapper() -> None:
+    description = "A" * 100
+    assert normalize_description(json.dumps({"description": description})) == description
 
 
 def test_refresh_access_token_uses_the_stored_refresh_token() -> None:

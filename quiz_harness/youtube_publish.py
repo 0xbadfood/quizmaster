@@ -30,6 +30,21 @@ class YouTubeDescriptionDraft(StrictModel):
     description: str = Field(min_length=80, max_length=4000)
 
 
+def normalize_description(raw: str) -> str:
+    text = raw.strip()
+    if text.startswith("```") and text.endswith("```"):
+        lines = text.splitlines()
+        if len(lines) >= 3:
+            text = "\n".join(lines[1:-1]).strip()
+    try:
+        return YouTubeDescriptionDraft.model_validate_json(text).description
+    except ValueError:
+        pass
+    if text.casefold().startswith("description:"):
+        text = text.split(":", 1)[1].lstrip()
+    return YouTubeDescriptionDraft(description=text).description
+
+
 def authorization_url(
     *, client_id: str, redirect_uri: str, state: str
 ) -> str:
@@ -345,25 +360,24 @@ def generate_description(
             with VLLMClient(
                 provider["base_url"], timeout_seconds=300, api_key=secret
             ) as client:
-                raw = client.generate_json(
+                raw = client.generate_text(
                     model=model,
                     messages=[
                         {
                             "role": "system",
                             "content": (
                                 "You are an educational video editor. Return only the "
-                                "requested structured response."
+                                "final YouTube description as plain text. Do not use a "
+                                "JSON wrapper or a Markdown code fence."
                             ),
                         },
                         {"role": "user", "content": prompt},
                     ],
-                    schema=YouTubeDescriptionDraft.model_json_schema(),
-                    schema_name="youtube_description",
                     seed=20260821,
                     temperature=0.4,
                     max_tokens=1800,
                 )
-            return YouTubeDescriptionDraft.model_validate_json(raw).description
+            return normalize_description(raw)
         except (OSError, ValueError, VLLMError) as exc:
             raise YouTubePublishError(f"description generation failed: {exc}") from exc
     if provider["provider_type"] == "openai_images":
