@@ -70,14 +70,14 @@ def build_background_planning_prompt(
     if layout == "landscape":
         production_contract = """- The normalized video asset is exactly 1920x1080 pixels in a true 16:9 landscape composition.
 - HARD HEADER LIMIT: render only the main title inside one shallow banner near the
-  top. Do not add a subtitle or ribbon. Leave at least 4 percent clear space above the
+  top. Do not add a subtitle or ribbon. Leave at least 6 percent clear space above the
   banner so no border or letter touches the top edge. The complete title banner must
-  fit inside y=4% to y=18% of the final frame. Scale the lettering down as needed,
+  fit inside y=6% to y=18% of the final frame. Scale the lettering down as needed,
   center it, and keep it within roughly 70 percent of the frame width; never let the
   banner expand into the quiz content area or touch the side edges.
 - Keep y=20% to y=52% calm and open for one large, wide question panel.
 - Keep y=52% to y=96% calm and open for four horizontal answer panels arranged as a
-  two-by-two grid: two wide choices per row and two rows. Do not plan one row of four.
+  single row of four. Do not plan a two-by-two answer grid.
 - Outside the shallow header, use a high-key, light-toned, low-contrast background:
   pale sky colors, soft cool neutrals, restrained pastels, and diffuse daylight.
   Avoid dominant navy, black, saturated neon, dramatic contrast, heavy vignettes,
@@ -166,15 +166,15 @@ def _validate_prompt_plan(
         shallow_header = "banner" in folded_compact and any(
             marker in folded_compact
             for marker in (
-                "y=4% to y=18%",
-                "y=4% through y=18%",
-                "4% to 18%",
-                "4 percent to 18 percent",
+                "y=6% to y=18%",
+                "y=6% through y=18%",
+                "6% to 18%",
+                "6 percent to 18 percent",
             )
         )
         if not shallow_header:
             raise ValueError(
-                "landscape background prompt must confine the title banner to y=4%-18%"
+                "landscape background prompt must confine the title banner to y=6%-18%"
             )
         light_field = any(
             marker in folded_compact
@@ -187,13 +187,18 @@ def _validate_prompt_plan(
             raise ValueError(
                 "landscape background prompt must request a light, low-contrast content field"
             )
-        answer_grid = any(
+        answer_row = any(
             marker in folded_compact
-            for marker in ("two-by-two", "two by two", "2x2", "two rows")
+            for marker in (
+                "single row of four",
+                "one row of four",
+                "four in one row",
+                "four horizontal answer panels",
+            )
         )
-        if not answer_grid:
+        if not answer_row:
             raise ValueError(
-                "landscape background prompt must reserve a two-by-two answer grid"
+                "landscape background prompt must reserve one row of four answers"
             )
     else:
         vertical_mobile = "vertical" in folded and any(
@@ -466,10 +471,10 @@ def build_background_prompt(
     if layout == "landscape":
         layout_direction = """The final image is a true 16:9 landscape video background. Confine the exact
 main title to one shallow banner. Render no subtitle and no subtitle ribbon. Leave
-the upper 4 percent completely clear and fit the entire title banner inside y=4% to
+the upper 6 percent completely clear and fit the entire title banner inside y=6% to
 y=18%, with no border or letter touching the top edge. Center it within roughly 70
 percent of the frame width rather than stretching it edge to edge. Keep y=20% to
-y=52% open for a wide question panel and y=52% to y=96% open for four horizontal answer panels in a two-by-two grid.
+y=52% open for a wide question panel and y=52% to y=96% open for four horizontal answer panels in a single row of four.
 Outside the header, use a high-key, light-toned, low-contrast field with pale sky
 colors, soft cool neutrals, restrained pastels, and diffuse daylight. Avoid dominant
 dark colors, saturated neon, dramatic contrast, heavy vignettes, and bright central
