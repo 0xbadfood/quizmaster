@@ -119,6 +119,15 @@ def test_background_upload_is_normalized_and_approved(tmp_path: Path) -> None:
         (category_root / "category-image-manifest.json").read_text(encoding="utf-8")
     )
     assert manifest["assets"]["birds_runtime_background"]["status"] == "approved"
+    inventory = store.inventory(category)
+    background = next(
+        item
+        for item in inventory["assets"]
+        if item["role"] == "runtime_background"
+    )
+    assert background["image_url"].startswith(
+        "/studio-assets/birds/assets/category/runtime_background.png?v="
+    )
 
 
 def test_inventory_migrates_legacy_animal_tile_fallback(tmp_path: Path) -> None:

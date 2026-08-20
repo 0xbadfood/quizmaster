@@ -468,6 +468,7 @@ class StudioVisualStore:
                     "status": record.get("status", item.review_status),
                     "image_url": (
                         f"/studio-assets/{category['slug']}/{item.file}"
+                        f"?v={output.stat().st_mtime_ns}"
                         if output.is_file()
                         else None
                     ),
@@ -504,6 +505,7 @@ class StudioVisualStore:
                     ),
                     "image_url": (
                         f"/studio-assets/{category['slug']}/{subject.image_path}"
+                        f"?v={output.stat().st_mtime_ns}"
                         if output.is_file()
                         else None
                     ),

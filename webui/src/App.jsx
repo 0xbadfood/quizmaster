@@ -634,7 +634,7 @@ function VisualsWorkspace({ category, providers, onStage, onJob, refreshToken, o
         <div className="visual-grid">
           {loading && [...Array(12)].map((_, index) => <div className="visual-card-skeleton" key={index} />)}
           {!loading && visible.map((asset) => <button className={`visual-card ${selectedId === asset.asset_id ? 'selected' : ''}`} onClick={() => setSelectedId(asset.asset_id)} key={asset.asset_id}>
-            <span className="visual-thumb">{asset.image_url ? <img src={`${asset.image_url}?r=${refreshToken}`} alt="" /> : <Image size={28} />}{!BACKGROUND_VISUAL_ROLES.includes(asset.role) && <input type="checkbox" aria-label={`Select ${asset.asset_id}`} checked={checked.includes(asset.asset_id)} onClick={(event) => event.stopPropagation()} onChange={() => toggle(asset.asset_id)} />}</span>
+            <span className="visual-thumb">{asset.image_url ? <img src={`${asset.image_url}&r=${refreshToken}`} alt="" /> : <Image size={28} />}{!BACKGROUND_VISUAL_ROLES.includes(asset.role) && <input type="checkbox" aria-label={`Select ${asset.asset_id}`} checked={checked.includes(asset.asset_id)} onClick={(event) => event.stopPropagation()} onChange={() => toggle(asset.asset_id)} />}</span>
             <span className="visual-card-copy"><strong>{asset.label || asset.asset_id.replaceAll('_', ' ')}</strong><small>{VISUAL_ROLE_LABELS[asset.role]}</small></span>
             <StatusBadge status={asset.status === 'generated_pending_review' ? 'attention' : asset.status} label={asset.status === 'generated_pending_review' ? 'Awaiting review' : undefined} />
           </button>)}

@@ -1232,9 +1232,12 @@ def _start_video_background_generation(
             "plan": plan_document.model_dump(mode="json"),
         }
         progress(
-            "Rendering 1080x1920 background"
-            if portrait
-            else "Rendering 1920x1080 background",
+            (
+                "Requesting 1080x1920 background from "
+                if portrait
+                else "Requesting 1920x1080 background from "
+            )
+            + image_provider["name"],
             0.45,
         )
         generated = generate_quiz_background(
@@ -1255,6 +1258,8 @@ def _start_video_background_generation(
             subtitle="",
             prompt_override=plan_document.prompt,
             planning_metadata=planning,
+            retries=0,
+            timeout_seconds=360.0,
             force=payload.force,
             layout=layout,
         )
