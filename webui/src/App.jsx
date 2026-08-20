@@ -13,6 +13,7 @@ import {
   CircleDashed,
   Database,
   Download,
+  ExternalLink,
   FileQuestion,
   Film,
   Gauge,
@@ -45,6 +46,7 @@ import {
   Wifi,
   WifiOff,
   X,
+  TvMinimalPlay as Youtube,
 } from 'lucide-react'
 import { api, patch, post, upload } from './api.js'
 
@@ -1023,7 +1025,7 @@ function formatDuration(value) {
   return `${minutes}:${String(seconds % 60).padStart(2, '0')}`
 }
 
-function VideoWorkspace({ category, onStage, onJob, refreshToken }) {
+function VideoWorkspace({ category, providers, onStage, onJob, refreshToken }) {
   const [payload, setPayload] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -1077,7 +1079,7 @@ function VideoWorkspace({ category, onStage, onJob, refreshToken }) {
         {!loading && videos.length > 0 && <div className="video-table-shell">
           <div className="video-table-head"><span>Video</span><span>Source sets</span><span>Runtime</span><span>Created</span><span>Status</span><span /></div>
           {videos.map((video) => <button className="video-row" key={video.id} onClick={() => setDialog({ type: 'preview', video })}>
-            <span className="video-primary"><span className={`video-format ${video.orientation}`}>{video.orientation === 'landscape' ? <Monitor size={18} /> : <Smartphone size={18} />}</span><span className="video-name"><strong>{video.title}</strong><small>{video.orientation} · {video.question_count} questions · bundle v{video.bundle_version}</small></span></span>
+            <span className="video-primary"><span className={`video-format ${video.orientation}`}>{video.orientation === 'landscape' ? <Monitor size={18} /> : <Smartphone size={18} />}</span><span className="video-name"><strong>{video.title}</strong><small>{video.orientation} · {video.question_count} questions · bundle v{video.bundle_version}</small>{video.youtube_upload && <small className={`youtube-state ${video.youtube_upload.status}`}><Youtube size={10} />{video.youtube_upload.status === 'complete' ? 'Published on YouTube' : `YouTube ${video.youtube_upload.status}`}</small>}</span></span>
             <span><strong>{video.selections.map((item) => item.title || `Set ${item.number}`).join(', ')}</strong><small>{video.selections.length} set{video.selections.length === 1 ? '' : 's'}</small></span>
             <span><strong>{formatDuration(video.duration_seconds)}</strong><small>{video.file_bytes ? formatBytes(video.file_bytes) : 'Pending'}</small></span>
             <span><strong>{new Date(video.created_at).toLocaleDateString()}</strong><small>{new Date(video.created_at).toLocaleTimeString()}</small></span>
@@ -1090,7 +1092,8 @@ function VideoWorkspace({ category, onStage, onJob, refreshToken }) {
       {error && <div className="bank-error"><CircleAlert size={15} />{error}<button title="Dismiss" onClick={() => setError('')}><X size={15} /></button></div>}
     </section>
     {dialog?.type === 'create' && <VideoCreateDialog category={category} payload={payload} onClose={() => setDialog(null)} onQueued={async (job) => { setDialog(null); onJob(job); await loadVideos() }} />}
-    {dialog?.type === 'preview' && <VideoPreviewDialog video={dialog.video} onClose={() => setDialog(null)} />}
+    {dialog?.type === 'preview' && <VideoPreviewDialog video={dialog.video} youtube={payload?.youtube} onClose={() => setDialog(null)} onUpload={() => setDialog({ type: 'youtube', video: dialog.video })} />}
+    {dialog?.type === 'youtube' && <YouTubeUploadDialog video={dialog.video} providers={providers} onClose={() => setDialog(null)} onQueued={async (job) => { setDialog(null); onJob(job); await loadVideos() }} />}
   </div>
 }
 
@@ -1142,14 +1145,54 @@ function VideoCreateDialog({ category, payload, onClose, onQueued }) {
   </form></section></div>
 }
 
-function VideoPreviewDialog({ video, onClose }) {
+function VideoPreviewDialog({ video, youtube, onClose, onUpload }) {
   const ready = video.status === 'complete' && video.stream_url
   return <div className="dialog-backdrop"><section className="dialog video-preview-dialog" role="dialog" aria-modal="true"><header><div><p className="kicker">VIDEO DETAILS</p><h2>{video.title}</h2></div><button className="icon-button quiet" title="Close" onClick={onClose}><X size={18} /></button></header><div className="video-preview-body">
     {ready ? <video controls preload="metadata" src={video.stream_url}>Your browser cannot play this video.</video> : <div className="video-preview-pending">{['queued', 'rendering'].includes(video.status) ? <LoaderCircle className="spin" size={30} /> : <CircleAlert size={30} />}<strong>{video.status === 'interrupted' ? 'Render interrupted' : video.status === 'failed' ? 'Render failed' : 'Render in progress'}</strong><span>{video.error || 'Progress is available in the jobs drawer.'}</span></div>}
     <div className="video-preview-meta"><span><small>Format</small><strong>{video.orientation}</strong></span><span><small>Questions</small><strong>{video.question_count}</strong></span><span><small>Runtime</small><strong>{formatDuration(video.duration_seconds)}</strong></span><span><small>File size</small><strong>{video.file_bytes ? formatBytes(video.file_bytes) : '-'}</strong></span></div>
     <div className="video-preview-sets"><small>SOURCE SETS</small><span>{video.selections.map((item) => item.title || `Set ${item.number}`).join(' · ')}</span></div>
-    <div className="dialog-actions"><button className="button secondary" onClick={onClose}>Close</button>{ready && <a className="button primary" href={video.download_url}><Download size={15} />Download MP4</a>}</div>
+    {video.youtube_upload && <div className={`youtube-upload-summary ${video.youtube_upload.status}`}><Youtube size={18} /><span><strong>{video.youtube_upload.status === 'complete' ? 'Published on YouTube' : `YouTube upload ${video.youtube_upload.status}`}</strong><small>{video.youtube_upload.error || `${video.youtube_upload.privacy_status} visibility`}</small></span>{video.youtube_upload.youtube_url && <a className="icon-button" title="Open on YouTube" href={video.youtube_upload.youtube_url} target="_blank" rel="noreferrer"><ExternalLink size={15} /></a>}</div>}
+    <div className="dialog-actions"><button className="button secondary" onClick={onClose}>Close</button>{ready && <a className="button secondary" href={video.download_url}><Download size={15} />Download MP4</a>}{ready && <button className="button primary" disabled={!youtube?.connected || ['queued', 'uploading'].includes(video.youtube_upload?.status)} title={youtube?.connected ? 'Upload this video to YouTube' : 'Connect YouTube in Admin first'} onClick={onUpload}><Youtube size={15} />{video.youtube_upload?.status === 'complete' ? 'Upload again' : 'Upload to YouTube'}</button>}</div>
   </div></section></div>
+}
+
+function YouTubeUploadDialog({ video, providers, onClose, onQueued }) {
+  const llmProviders = providers.filter((item) => item.enabled && ['openai_compatible_llm', 'openai_images'].includes(item.provider_type))
+  const initialProvider = llmProviders[0]
+  const initialModel = initialProvider?.provider_type === 'openai_images' ? initialProvider.settings?.question_model || '' : initialProvider?.default_model || initialProvider?.discovered_models?.[0] || ''
+  const [form, setForm] = useState({ title: video.title.slice(0, 100), description: video.youtube_upload?.description || '', privacy_status: 'private', provider_id: initialProvider?.id || '', model: initialModel })
+  const [generating, setGenerating] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState('')
+
+  function chooseProvider(providerId) {
+    const provider = llmProviders.find((item) => item.id === providerId)
+    const model = provider?.provider_type === 'openai_images' ? provider.settings?.question_model || '' : provider?.default_model || provider?.discovered_models?.[0] || ''
+    setForm((current) => ({ ...current, provider_id: providerId, model }))
+  }
+
+  async function generate() {
+    setGenerating(true); setError('')
+    try {
+      const result = await post(`/api/studio/videos/${video.id}/youtube/description`, { provider_id: form.provider_id, model: form.model || null })
+      setForm((current) => ({ ...current, description: result.description }))
+    } catch (requestError) { setError(requestError.message) } finally { setGenerating(false) }
+  }
+
+  async function submit(event) {
+    event.preventDefault(); setUploading(true); setError('')
+    try { await onQueued(await post(`/api/studio/videos/${video.id}/youtube/upload`, { title: form.title, description: form.description, privacy_status: form.privacy_status })) } catch (requestError) { setError(requestError.message); setUploading(false) }
+  }
+
+  return <div className="dialog-backdrop"><section className="dialog youtube-upload-dialog" role="dialog" aria-modal="true"><header><div><p className="kicker">YOUTUBE PUBLISHING</p><h2>Upload video</h2></div><button className="icon-button quiet" title="Close" onClick={onClose}><X size={18} /></button></header><form onSubmit={submit}>
+    <label>Video title <span className="label-note">{form.title.length}/100</span><input required maxLength="100" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} /></label>
+    <div className="youtube-description-heading"><label htmlFor="youtube-description">Description <span className="label-note">{form.description.length}/5000</span></label><button type="button" className="button secondary" disabled={generating || !form.provider_id || !form.model} onClick={generate}>{generating ? <LoaderCircle className="spin" size={14} /> : <Sparkles size={14} />}Generate with AI</button></div>
+    <textarea id="youtube-description" rows="10" maxLength="5000" placeholder="Describe the quiz, its learning value, and what viewers can expect." value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
+    <div className="dialog-grid youtube-publish-options"><label>LLM provider<select value={form.provider_id} onChange={(event) => chooseProvider(event.target.value)}><option value="">Select provider</option>{llmProviders.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label>LLM model<input value={form.model} onChange={(event) => setForm({ ...form, model: event.target.value })} placeholder="Model for description" /></label><label>Visibility<select value={form.privacy_status} onChange={(event) => setForm({ ...form, privacy_status: event.target.value })}><option value="private">Private</option><option value="unlisted">Unlisted</option><option value="public">Public</option></select></label></div>
+    <div className="youtube-kids-notice"><CheckCircle2 size={15} /><span>Uploaded as made for kids in the Education category.</span></div>
+    {error && <div className="inline-error"><CircleAlert size={15} />{error}</div>}
+    <div className="dialog-actions"><button type="button" className="button secondary" onClick={onClose}>Cancel</button><button className="button primary" disabled={uploading || !form.title.trim()}>{uploading ? <LoaderCircle className="spin" size={15} /> : <Upload size={15} />}Start upload</button></div>
+  </form></section></div>
 }
 
 function StatusIcon({ status }) {
@@ -1256,17 +1299,103 @@ function EmptyState({ icon: Icon, title, detail }) {
 
 function ProviderAdmin({ providers, selectedId, onSelect, onReload, onJob, onCreate }) {
   const selected = providers.find((item) => item.id === selectedId) || providers[0]
+  const youtubeSelected = selectedId === 'youtube'
   return <main className="admin-layout">
     <aside className="provider-sidebar">
       <div className="sidebar-heading"><div><span>ADMINISTRATION</span><strong>Connections</strong></div><button className="icon-button quiet" title="Add provider connection" onClick={onCreate}><Plus size={17} /></button></div>
       <div className="provider-list">
-        {providers.map((provider) => <ProviderListItem provider={provider} selected={provider.id === selected?.id} onClick={() => onSelect(provider.id)} key={provider.id} />)}
+        {providers.map((provider) => <ProviderListItem provider={provider} selected={!youtubeSelected && provider.id === selected?.id} onClick={() => onSelect(provider.id)} key={provider.id} />)}
+        <button className={`provider-item ${youtubeSelected ? 'selected' : ''}`} onClick={() => onSelect('youtube')}><span className="provider-icon youtube"><Youtube size={18} /></span><span><strong>YouTube publishing</strong><small>OAuth and uploads</small></span><span className="health-dot unchecked" /></button>
       </div>
       <div className="provider-legend"><KeyRound size={15} /><span>Secrets are encrypted at rest</span></div>
     </aside>
-    {selected ? <ProviderEditor provider={selected} onSaved={onReload} onJob={onJob} /> : <EmptyState icon={Server} title="No provider connections" />}
-    {selected && <ProviderDiagnostics provider={selected} />}
+    {youtubeSelected ? <YouTubeConnectionEditor /> : selected ? <ProviderEditor provider={selected} onSaved={onReload} onJob={onJob} /> : <EmptyState icon={Server} title="No provider connections" />}
+    {youtubeSelected ? <YouTubeConnectionDiagnostics /> : selected && <ProviderDiagnostics provider={selected} />}
   </main>
+}
+
+function useYouTubeConnection() {
+  const [connection, setConnection] = useState(null)
+  const [loading, setLoading] = useState(true)
+  async function reload() {
+    setLoading(true)
+    try { setConnection(await api('/api/admin/youtube')) } finally { setLoading(false) }
+  }
+  useEffect(() => { reload().catch(() => setLoading(false)) }, [])
+  useEffect(() => {
+    function receive(event) {
+      if (event.origin === window.location.origin && event.data?.type === 'quiz-youtube-oauth') reload().catch(() => {})
+    }
+    window.addEventListener('message', receive)
+    return () => window.removeEventListener('message', receive)
+  }, [])
+  return { connection, loading, reload, setConnection }
+}
+
+function YouTubeConnectionEditor() {
+  const { connection, loading, reload, setConnection } = useYouTubeConnection()
+  const [form, setForm] = useState({ client_id: '', client_secret: '' })
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState('')
+
+  useEffect(() => { if (connection) setForm((current) => ({ ...current, client_id: connection.client_id || '', client_secret: '' })) }, [connection?.client_id])
+  useEffect(() => {
+    function receive(event) {
+      if (event.origin !== window.location.origin || event.data?.type !== 'quiz-youtube-oauth') return
+      setNotice(event.data.message || (event.data.status === 'connected' ? 'YouTube connected' : 'Authorization failed'))
+      reload().catch((error) => setNotice(error.message))
+    }
+    window.addEventListener('message', receive)
+    return () => window.removeEventListener('message', receive)
+  }, [])
+
+  async function save(event) {
+    event.preventDefault(); setBusy(true); setNotice('')
+    try {
+      const result = await patch('/api/admin/youtube', { client_id: form.client_id, ...(form.client_secret ? { client_secret: form.client_secret } : {}) })
+      setConnection(result); setForm((current) => ({ ...current, client_secret: '' })); setNotice('Client credentials saved')
+    } catch (error) { setNotice(error.message) } finally { setBusy(false) }
+  }
+
+  async function connect() {
+    setBusy(true); setNotice('')
+    try {
+      const result = await post('/api/admin/youtube/oauth/start')
+      const popup = window.open(result.authorization_url, 'quiz-youtube-oauth', 'popup,width=620,height=760')
+      if (!popup) throw new Error('Allow popups to connect YouTube')
+      popup.focus()
+      setNotice('Complete authorization in the Google window')
+    } catch (error) { setNotice(error.message) } finally { setBusy(false) }
+  }
+
+  async function disconnect() {
+    setBusy(true); setNotice('')
+    try { setConnection(await post('/api/admin/youtube/disconnect')); setNotice('YouTube channel disconnected') } catch (error) { setNotice(error.message) } finally { setBusy(false) }
+  }
+
+  return <section className="provider-editor youtube-editor">
+    <header className="editor-heading"><div className="provider-icon large youtube"><Youtube size={23} /></div><div><p className="kicker">YOUTUBE DATA API</p><h1>YouTube publishing</h1><p>Server-side OAuth and resumable video uploads</p></div>{connection && <StatusBadge status={connection.connected ? 'healthy' : connection.configured ? 'attention' : 'unchecked'} label={connection.connected ? 'Connected' : connection.configured ? 'Authorization needed' : 'Not configured'} />}</header>
+    <form onSubmit={save} className="editor-form">
+      <div className="form-section"><div className="form-section-title"><span>OAuth client</span><small>Use Web application credentials from Google Cloud Console</small></div><div className="form-grid">
+        <label className="span-2">Client ID<input required autoComplete="off" value={form.client_id} onChange={(event) => setForm({ ...form, client_id: event.target.value })} placeholder="...apps.googleusercontent.com" /></label>
+        <label className="span-2">Client secret <span className="label-note">{connection?.client_secret_hint ? `Configured ${connection.client_secret_hint}` : 'Required once'}</span><input type="password" autoComplete="new-password" value={form.client_secret} onChange={(event) => setForm({ ...form, client_secret: event.target.value })} placeholder={connection?.configured ? 'Enter only to replace it' : 'Google OAuth client secret'} /></label>
+        <label className="span-2">Authorized redirect URI<input readOnly value={connection?.redirect_uri || ''} /></label>
+      </div></div>
+      <div className="form-section"><div className="form-section-title"><span>Channel authorization</span><small>Requests only permission to upload videos and stores the refresh token encrypted</small></div><div className="youtube-connect-panel">{loading ? <LoaderCircle className="spin" size={20} /> : connection?.connected ? <><div className="youtube-channel"><CheckCircle2 size={20} /><span><strong>{connection.channel_title || 'YouTube channel connected'}</strong><small>{connection.channel_id || 'Upload authorization active'}</small></span></div><button type="button" className="button secondary" disabled={busy} onClick={disconnect}>Disconnect</button></> : <><div className="youtube-channel"><Youtube size={20} /><span><strong>Connect the publishing channel</strong><small>Google consent opens in a separate secure window</small></span></div><button type="button" className="button secondary" disabled={busy || !connection?.configured} onClick={connect}><ExternalLink size={15} />Connect YouTube</button></>}</div></div>
+      <div className="editor-actions"><a className="button secondary" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer"><ExternalLink size={15} />Google Cloud credentials</a><button className="button primary" disabled={busy}>{busy ? <LoaderCircle className="spin" size={16} /> : <Save size={16} />}Save credentials</button></div>
+      {notice && <div className={notice.includes('saved') || notice.includes('connected') || notice.includes('Complete') ? 'form-notice success' : 'form-notice'}>{notice}</div>}
+    </form>
+  </section>
+}
+
+function YouTubeConnectionDiagnostics() {
+  const { connection, loading } = useYouTubeConnection()
+  return <aside className="provider-diagnostics"><div className="inspector-title"><div><Activity size={16} /><strong>Publishing status</strong></div></div><div className="inspector-scroll">
+    <div className={`diagnostic-health ${connection?.connected ? 'healthy' : 'unchecked'}`}>{loading ? <LoaderCircle className="spin" size={24} /> : connection?.connected ? <CheckCircle2 size={24} /> : <Youtube size={24} />}<div><strong>{connection?.connected ? 'Ready to upload' : 'Not connected'}</strong><span>{connection?.connected ? 'Rendered videos can be published from Video Studio.' : 'Save credentials and authorize a channel.'}</span></div></div>
+    <div className="inspector-block"><span className="inspector-label">OAUTH SCOPE</span><strong>{connection?.scope || 'youtube.upload'}</strong></div>
+    <div className="inspector-block"><span className="inspector-label">DEFAULT SAFETY</span><p className="muted-copy">Uploads default to private and are declared as made for kids in the Education category.</p></div>
+    <div className="inspector-block"><span className="inspector-label">REDIRECT URI</span><code className="release-hash">{connection?.redirect_uri || '-'}</code></div>
+  </div></aside>
 }
 
 function ProviderListItem({ provider, selected, onClick }) {
@@ -1441,7 +1570,7 @@ export default function App() {
     const payload = await api('/api/admin/providers')
     setProviders(payload.providers)
     const preferred = preferredId || selectedProviderId
-    setSelectedProviderId(payload.providers.some((item) => item.id === preferred) ? preferred : payload.providers[0]?.id || '')
+    setSelectedProviderId(preferred === 'youtube' || payload.providers.some((item) => item.id === preferred) ? preferred : payload.providers[0]?.id || '')
   }
   async function loadJobs() { const payload = await api('/api/studio/jobs'); setJobs(payload.jobs) }
   async function loadStudio() {
@@ -1494,7 +1623,7 @@ export default function App() {
   return <div className="app-shell">
     <AppHeader view={view} category={selectedCategory} onView={setView} onLogout={logout} healthyProviders={healthyProviders} totalProviders={providers.length} />
     {error && <div className="global-error"><CircleAlert size={17} /><span>{error}</span><button title="Dismiss" onClick={() => setError('')}><X size={16} /></button></div>}
-    {view === 'workspace' ? <main className="workspace-shell"><CategorySidebar categories={categories} selected={selectedSlug} onSelect={setSelectedSlug} loading={loading} onRefresh={loadCategories} onCreate={() => setCategoryDialog('create')} />{activeStage === 'questions' ? <QuestionBankWorkspace category={selectedCategory} providers={providers} onStage={setActiveStage} onJob={registerJob} refreshToken={studioRevision} onCategoryRefresh={loadCategories} /> : activeStage === 'sets' ? <QuizSetsWorkspace category={selectedCategory} providers={providers} onStage={setActiveStage} onJob={registerJob} refreshToken={studioRevision} onCategoryRefresh={loadCategories} /> : activeStage === 'visuals' ? <VisualsWorkspace category={selectedCategory} providers={providers} onStage={setActiveStage} onJob={registerJob} refreshToken={studioRevision} onCategoryRefresh={loadCategories} /> : activeStage === 'audio' ? <AudioWorkspace category={selectedCategory} providers={providers} onStage={setActiveStage} onJob={registerJob} refreshToken={studioRevision} onCategoryRefresh={loadCategories} /> : activeStage === 'publish' ? <PublishWorkspace category={selectedCategory} onStage={setActiveStage} onJob={registerJob} refreshToken={studioRevision} onCategoryRefresh={loadCategories} /> : activeStage === 'video' ? <VideoWorkspace category={selectedCategory} onStage={setActiveStage} onJob={registerJob} refreshToken={studioRevision} /> : <OverviewWorkspace category={selectedCategory} onStage={setActiveStage} onEdit={() => setCategoryDialog(selectedCategory)} />}</main> : <ProviderAdmin providers={providers} selectedId={selectedProviderId} onSelect={setSelectedProviderId} onReload={loadProviders} onJob={registerJob} onCreate={() => setAddingProvider(true)} />}
+    {view === 'workspace' ? <main className="workspace-shell"><CategorySidebar categories={categories} selected={selectedSlug} onSelect={setSelectedSlug} loading={loading} onRefresh={loadCategories} onCreate={() => setCategoryDialog('create')} />{activeStage === 'questions' ? <QuestionBankWorkspace category={selectedCategory} providers={providers} onStage={setActiveStage} onJob={registerJob} refreshToken={studioRevision} onCategoryRefresh={loadCategories} /> : activeStage === 'sets' ? <QuizSetsWorkspace category={selectedCategory} providers={providers} onStage={setActiveStage} onJob={registerJob} refreshToken={studioRevision} onCategoryRefresh={loadCategories} /> : activeStage === 'visuals' ? <VisualsWorkspace category={selectedCategory} providers={providers} onStage={setActiveStage} onJob={registerJob} refreshToken={studioRevision} onCategoryRefresh={loadCategories} /> : activeStage === 'audio' ? <AudioWorkspace category={selectedCategory} providers={providers} onStage={setActiveStage} onJob={registerJob} refreshToken={studioRevision} onCategoryRefresh={loadCategories} /> : activeStage === 'publish' ? <PublishWorkspace category={selectedCategory} onStage={setActiveStage} onJob={registerJob} refreshToken={studioRevision} onCategoryRefresh={loadCategories} /> : activeStage === 'video' ? <VideoWorkspace category={selectedCategory} providers={providers} onStage={setActiveStage} onJob={registerJob} refreshToken={studioRevision} /> : <OverviewWorkspace category={selectedCategory} onStage={setActiveStage} onEdit={() => setCategoryDialog(selectedCategory)} />}</main> : <ProviderAdmin providers={providers} selectedId={selectedProviderId} onSelect={setSelectedProviderId} onReload={loadProviders} onJob={registerJob} onCreate={() => setAddingProvider(true)} />}
     <JobsDrawer jobs={jobs} expanded={jobsOpen} onToggle={() => setJobsOpen((current) => !current)} />
     {addingProvider && <AddProviderDialog onClose={() => setAddingProvider(false)} onCreated={providerCreated} />}
     {categoryDialog && <CategoryDialog category={categoryDialog === 'create' ? null : categoryDialog} onClose={() => setCategoryDialog(null)} onSaved={categorySaved} />}

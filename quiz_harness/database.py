@@ -244,6 +244,53 @@ MIGRATIONS: list[tuple[int, str]] = [
         CREATE INDEX idx_studio_videos_job ON studio_videos(job_id);
         """,
     ),
+    (
+        7,
+        """
+        CREATE TABLE youtube_connections (
+            id TEXT PRIMARY KEY CHECK (id = 'default'),
+            client_id TEXT NOT NULL,
+            client_secret_ciphertext TEXT NOT NULL,
+            client_secret_last_four TEXT NOT NULL,
+            refresh_token_ciphertext TEXT,
+            refresh_token_last_four TEXT,
+            channel_id TEXT,
+            channel_title TEXT,
+            connected_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE youtube_oauth_states (
+            state_hash TEXT PRIMARY KEY,
+            redirect_uri TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE youtube_uploads (
+            id TEXT PRIMARY KEY,
+            video_id TEXT NOT NULL REFERENCES studio_videos(id) ON DELETE CASCADE,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            privacy_status TEXT NOT NULL
+                CHECK (privacy_status IN ('private', 'unlisted', 'public')),
+            status TEXT NOT NULL
+                CHECK (status IN ('queued', 'uploading', 'complete', 'failed', 'interrupted')),
+            job_id TEXT,
+            youtube_video_id TEXT,
+            youtube_url TEXT,
+            error TEXT,
+            created_at TEXT NOT NULL,
+            completed_at TEXT,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE INDEX idx_youtube_uploads_video
+            ON youtube_uploads(video_id, created_at DESC);
+        CREATE INDEX idx_youtube_uploads_job ON youtube_uploads(job_id);
+        """,
+    ),
 ]
 
 
@@ -1421,6 +1468,258 @@ class QuizDatabase:
                     error = 'The service restarted before rendering completed.',
                     updated_at = ?
                 WHERE status IN ('queued', 'rendering')
+                """,
+                (updated_at,),
+            )
+        return cursor.rowcount
+
+    def youtube_connection(self) -> dict[str, Any] | None:
+        self.migrate()
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM youtube_connections WHERE id = 'default'"
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def save_youtube_credentials(
+        self,
+        *,
+        client_id: str,
+        client_secret_ciphertext: str,
+        client_secret_last_four: str,
+        created_at: str,
+        updated_at: str,
+    ) -> dict[str, Any]:
+        existing = self.youtube_connection()
+        reset_authorization = bool(
+            existing and existing["client_id"] != client_id
+        )
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO youtube_connections(
+                    id, client_id, client_secret_ciphertext,
+                    client_secret_last_four, created_at, updated_at
+                ) VALUES ('default', ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    client_id = excluded.client_id,
+                    client_secret_ciphertext = excluded.client_secret_ciphertext,
+                    client_secret_last_four = excluded.client_secret_last_four,
+                    refresh_token_ciphertext = CASE WHEN ? THEN NULL ELSE refresh_token_ciphertext END,
+                    refresh_token_last_four = CASE WHEN ? THEN NULL ELSE refresh_token_last_four END,
+                    channel_id = CASE WHEN ? THEN NULL ELSE channel_id END,
+                    channel_title = CASE WHEN ? THEN NULL ELSE channel_title END,
+                    connected_at = CASE WHEN ? THEN NULL ELSE connected_at END,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    client_id,
+                    client_secret_ciphertext,
+                    client_secret_last_four,
+                    created_at,
+                    updated_at,
+                    reset_authorization,
+                    reset_authorization,
+                    reset_authorization,
+                    reset_authorization,
+                    reset_authorization,
+                ),
+            )
+        result = self.youtube_connection()
+        assert result is not None
+        return result
+
+    def authorize_youtube(
+        self,
+        *,
+        refresh_token_ciphertext: str,
+        refresh_token_last_four: str,
+        channel_id: str | None,
+        channel_title: str | None,
+        connected_at: str,
+    ) -> dict[str, Any]:
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE youtube_connections SET
+                    refresh_token_ciphertext = ?, refresh_token_last_four = ?,
+                    channel_id = ?, channel_title = ?, connected_at = ?, updated_at = ?
+                WHERE id = 'default'
+                """,
+                (
+                    refresh_token_ciphertext,
+                    refresh_token_last_four,
+                    channel_id,
+                    channel_title,
+                    connected_at,
+                    connected_at,
+                ),
+            )
+        if not cursor.rowcount:
+            raise KeyError("YouTube client credentials are not configured")
+        result = self.youtube_connection()
+        assert result is not None
+        return result
+
+    def disconnect_youtube(self, updated_at: str) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE youtube_connections SET
+                    refresh_token_ciphertext = NULL, refresh_token_last_four = NULL,
+                    channel_id = NULL, channel_title = NULL, connected_at = NULL,
+                    updated_at = ?
+                WHERE id = 'default'
+                """,
+                (updated_at,),
+            )
+        return self.youtube_connection()
+
+    def create_youtube_oauth_state(
+        self,
+        *,
+        state_hash: str,
+        redirect_uri: str,
+        expires_at: str,
+        created_at: str,
+    ) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                "DELETE FROM youtube_oauth_states WHERE expires_at < ?", (created_at,)
+            )
+            connection.execute(
+                """
+                INSERT INTO youtube_oauth_states(
+                    state_hash, redirect_uri, expires_at, created_at
+                ) VALUES (?, ?, ?, ?)
+                """,
+                (state_hash, redirect_uri, expires_at, created_at),
+            )
+
+    def consume_youtube_oauth_state(
+        self, *, state_hash: str, now: str
+    ) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM youtube_oauth_states
+                WHERE state_hash = ? AND expires_at >= ?
+                """,
+                (state_hash, now),
+            ).fetchone()
+            connection.execute(
+                "DELETE FROM youtube_oauth_states WHERE state_hash = ? OR expires_at < ?",
+                (state_hash, now),
+            )
+        return dict(row) if row is not None else None
+
+    @staticmethod
+    def _youtube_upload_row(row: sqlite3.Row) -> dict[str, Any]:
+        return dict(row)
+
+    def create_youtube_upload(self, item: dict[str, Any]) -> dict[str, Any]:
+        self.migrate()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO youtube_uploads(
+                    id, video_id, title, description, privacy_status, status,
+                    job_id, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    item["id"],
+                    item["video_id"],
+                    item["title"],
+                    item["description"],
+                    item["privacy_status"],
+                    item["status"],
+                    item.get("job_id"),
+                    item["created_at"],
+                    item["updated_at"],
+                ),
+            )
+        return self.youtube_upload(item["id"])
+
+    def update_youtube_upload(
+        self,
+        upload_id: str,
+        *,
+        status: str,
+        updated_at: str,
+        job_id: str | None = None,
+        youtube_video_id: str | None = None,
+        youtube_url: str | None = None,
+        error: str | None = None,
+    ) -> dict[str, Any]:
+        completed_at = updated_at if status in {"complete", "failed"} else None
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE youtube_uploads SET
+                    status = ?, job_id = COALESCE(?, job_id),
+                    youtube_video_id = COALESCE(?, youtube_video_id),
+                    youtube_url = COALESCE(?, youtube_url), error = ?,
+                    completed_at = COALESCE(?, completed_at), updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    status,
+                    job_id,
+                    youtube_video_id,
+                    youtube_url,
+                    error,
+                    completed_at,
+                    updated_at,
+                    upload_id,
+                ),
+            )
+        return self.youtube_upload(upload_id)
+
+    def youtube_upload(self, upload_id: str) -> dict[str, Any]:
+        self.migrate()
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM youtube_uploads WHERE id = ?", (upload_id,)
+            ).fetchone()
+        if row is None:
+            raise KeyError(upload_id)
+        return self._youtube_upload_row(row)
+
+    def attach_youtube_upload_job(
+        self, upload_id: str, *, job_id: str, updated_at: str
+    ) -> dict[str, Any]:
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE youtube_uploads SET job_id = ?, updated_at = ? WHERE id = ?
+                """,
+                (job_id, updated_at, upload_id),
+            )
+        return self.youtube_upload(upload_id)
+
+    def latest_youtube_upload(self, video_id: str) -> dict[str, Any] | None:
+        self.migrate()
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM youtube_uploads
+                WHERE video_id = ? ORDER BY created_at DESC LIMIT 1
+                """,
+                (video_id,),
+            ).fetchone()
+        return self._youtube_upload_row(row) if row is not None else None
+
+    def mark_interrupted_youtube_uploads(self, updated_at: str) -> int:
+        self.migrate()
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE youtube_uploads
+                SET status = 'interrupted',
+                    error = 'The service restarted before the upload completed.',
+                    updated_at = ?
+                WHERE status IN ('queued', 'uploading')
                 """,
                 (updated_at,),
             )

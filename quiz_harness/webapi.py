@@ -1,23 +1,26 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import html
 import io
 import json
 import os
 import random
+import secrets
 import shutil
 import sqlite3
 import uuid
 import wave
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Literal
 
 from fastapi import Cookie, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -39,7 +42,7 @@ from .provider_service import (
     normalize_base_url,
     run_provider_test,
 )
-from .secure_store import SecretStore
+from .secure_store import SecretStore, SecretStoreError
 from .service import generate_plan
 from .studio_catalog import category_metadata_status, category_production_summary
 from .studio_questions import (
@@ -54,6 +57,13 @@ from .studio_publish import StudioPublishError, StudioPublishStore
 from .studio_video import StudioVideoError, StudioVideoStore
 from .studio_visuals import StudioVisualError, StudioVisualStore
 from .vibevoice_audio import DEFAULT_REFERENCE_TRANSCRIPT
+from .youtube_publish import (
+    YouTubeClient,
+    YouTubePublishError,
+    authorization_url,
+    deployed_video_questions,
+    generate_description,
+)
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -80,6 +90,7 @@ PROVIDER_AUDIO_ROOT = ASSET_ROOT / "provider-audio"
 SECRET_KEY_FILE = Path(
     os.getenv("QUIZ_SECRET_KEY_FILE", ROOT / "data/.provider_secret_key")
 )
+STUDIO_PUBLIC_BASE_URL = os.getenv("QUIZ_STUDIO_PUBLIC_BASE_URL", "").rstrip("/")
 
 ASSET_ROOT.mkdir(parents=True, exist_ok=True)
 BUNDLE_ROOT.mkdir(parents=True, exist_ok=True)
@@ -425,6 +436,22 @@ class VideoCreationRequest(BaseModel):
     crf: int = Field(default=18, ge=1, le=51)
 
 
+class YouTubeCredentialsRequest(BaseModel):
+    client_id: str = Field(min_length=20, max_length=300)
+    client_secret: str | None = Field(default=None, max_length=500)
+
+
+class YouTubeDescriptionRequest(BaseModel):
+    provider_id: str = Field(min_length=2, max_length=100)
+    model: str | None = Field(default=None, min_length=2, max_length=200)
+
+
+class YouTubeUploadRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=100)
+    description: str = Field(default="", max_length=5000)
+    privacy_status: Literal["private", "unlisted", "public"] = "private"
+
+
 def _workspace(context: dict[str, Any]) -> Path:
     return ASSET_ROOT / context["asset_key"] / f"plan-{context['plan_id']}"
 
@@ -545,6 +572,7 @@ def _pipeline_detail(plan_id: int) -> dict[str, Any]:
 async def lifespan(_: FastAPI) -> Any:
     database.mark_interrupted_jobs(_now())
     database.mark_interrupted_videos(_now())
+    database.mark_interrupted_youtube_uploads(_now())
     yield
 
 
@@ -564,6 +592,7 @@ async def authentication(request: Request, call_next: Callable[..., Any]) -> Res
         "/api/health",
         "/api/auth/login",
         "/api/auth/status",
+        "/api/admin/youtube/oauth/callback",
     }
     protected = request.url.path.startswith(
         ("/api", "/artifacts", "/bundles", "/studio-assets", "/provider-tests")
@@ -1575,6 +1604,7 @@ def _public_video(record: dict[str, Any]) -> dict[str, Any]:
     else:
         result["stream_url"] = None
         result["download_url"] = None
+    result["youtube_upload"] = database.latest_youtube_upload(record["id"])
     return result
 
 
@@ -1613,6 +1643,7 @@ def category_video_inventory(category_slug: str) -> dict[str, Any]:
         sets = []
         backgrounds = {"portrait": False, "landscape": False}
         blocked_reason = f"Publish {category['name']} before creating videos: {exc}"
+    youtube = database.youtube_connection()
     return {
         "category_slug": category_slug,
         "deployed": bundle_version is not None,
@@ -1621,6 +1652,11 @@ def category_video_inventory(category_slug: str) -> dict[str, Any]:
         "sets": sets,
         "backgrounds": backgrounds,
         "limits": {"portrait": 10, "landscape": 50},
+        "youtube": {
+            "configured": bool(youtube),
+            "connected": bool(youtube and youtube.get("refresh_token_ciphertext")),
+            "channel_title": youtube.get("channel_title") if youtube else None,
+        },
         "blocked_reason": blocked_reason,
         "videos": [
             _public_video(item)
@@ -1738,6 +1774,141 @@ def download_studio_video(video_id: str) -> FileResponse:
     return FileResponse(path, media_type="video/mp4", filename=record["file_name"])
 
 
+@app.post("/api/studio/videos/{video_id}/youtube/description")
+def generate_youtube_description(
+    video_id: str, payload: YouTubeDescriptionRequest
+) -> dict[str, Any]:
+    _, video = _studio_video_file(video_id)
+    try:
+        provider = database.provider_connection(payload.provider_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="LLM provider not found") from exc
+    if provider["provider_type"] not in QUESTION_GENERATION_PROVIDER_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail="Select an OpenAI-compatible LLM or OpenAI API provider",
+        )
+    if not provider["enabled"]:
+        raise HTTPException(status_code=409, detail="Enable the LLM provider first")
+    model = payload.model
+    if not model and provider["provider_type"] == "openai_images":
+        model = provider.get("settings", {}).get("question_model")
+    model = model or provider.get("default_model") or next(
+        iter(provider.get("discovered_models") or []), None
+    )
+    if not model:
+        raise HTTPException(status_code=409, detail="Select an LLM model")
+    try:
+        secret = secret_store.decrypt(provider.get("secret_ciphertext"))
+        questions = deployed_video_questions(
+            bundle_root=CATEGORY_BUNDLE_ROOT, video=video
+        )
+        description = generate_description(
+            video=video,
+            questions=questions,
+            provider=provider,
+            model=str(model),
+            secret=secret,
+        )
+    except (OSError, ValueError, SecretStoreError, YouTubePublishError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "description": description,
+        "provider_id": provider["id"],
+        "model": model,
+        "question_count": len(questions),
+    }
+
+
+@app.post("/api/studio/videos/{video_id}/youtube/upload")
+def upload_studio_video_to_youtube(
+    video_id: str, payload: YouTubeUploadRequest
+) -> dict[str, Any]:
+    path, video = _studio_video_file(video_id)
+    connection = database.youtube_connection()
+    if connection is None or not connection.get("refresh_token_ciphertext"):
+        raise HTTPException(
+            status_code=409, detail="Connect a YouTube channel in Admin first"
+        )
+    latest = database.latest_youtube_upload(video_id)
+    if latest and latest["status"] in {"queued", "uploading"}:
+        raise HTTPException(status_code=409, detail="This video is already uploading")
+    try:
+        client_secret = secret_store.decrypt(connection["client_secret_ciphertext"])
+        refresh_token = secret_store.decrypt(connection["refresh_token_ciphertext"])
+    except SecretStoreError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not client_secret or not refresh_token:
+        raise HTTPException(status_code=409, detail="YouTube authorization is incomplete")
+
+    upload_id = uuid.uuid4().hex
+    now = _now()
+    upload_record = database.create_youtube_upload(
+        {
+            "id": upload_id,
+            "video_id": video_id,
+            "title": payload.title.strip(),
+            "description": payload.description.strip(),
+            "privacy_status": payload.privacy_status,
+            "status": "queued",
+            "created_at": now,
+            "updated_at": now,
+        }
+    )
+
+    def target(progress: Callable[..., None]) -> dict[str, Any]:
+        database.update_youtube_upload(
+            upload_id, status="uploading", updated_at=_now()
+        )
+        try:
+            with YouTubeClient() as client:
+                progress("Refreshing YouTube authorization", 0.03)
+                access_token = client.refresh_access_token(
+                    client_id=connection["client_id"],
+                    client_secret=client_secret,
+                    refresh_token=refresh_token,
+                )
+                result = client.upload_video(
+                    access_token=access_token,
+                    video_path=path,
+                    title=payload.title.strip(),
+                    description=payload.description.strip(),
+                    privacy_status=payload.privacy_status,
+                    progress=progress,
+                )
+        except Exception as exc:
+            database.update_youtube_upload(
+                upload_id,
+                status="failed",
+                error=str(exc),
+                updated_at=_now(),
+            )
+            raise
+        complete = database.update_youtube_upload(
+            upload_id,
+            status="complete",
+            youtube_video_id=result["youtube_video_id"],
+            youtube_url=result["youtube_url"],
+            updated_at=_now(),
+        )
+        return complete
+
+    job = jobs.start(
+        "youtube_upload",
+        target,
+        context={
+            "video_id": video_id,
+            "upload_id": upload_id,
+            "category_slug": video["category_slug"],
+            "privacy_status": payload.privacy_status,
+        },
+    )
+    upload_record = database.attach_youtube_upload_job(
+        upload_id, job_id=job["id"], updated_at=_now()
+    )
+    return {**job, "youtube_upload": upload_record}
+
+
 @app.get("/api/studio/jobs")
 def studio_jobs(limit: int = 30) -> dict[str, Any]:
     return {"jobs": database.studio_jobs(limit=max(1, min(limit, 100)))}
@@ -1787,6 +1958,170 @@ def provider_connections() -> dict[str, Any]:
             _public_provider(item) for item in database.provider_connections()
         ],
     }
+
+
+def _youtube_redirect_uri(request: Request) -> str:
+    base = STUDIO_PUBLIC_BASE_URL or str(request.base_url).rstrip("/")
+    return f"{base}/api/admin/youtube/oauth/callback"
+
+
+def _public_youtube_connection(request: Request) -> dict[str, Any]:
+    connection = database.youtube_connection()
+    return {
+        "configured": bool(connection),
+        "connected": bool(connection and connection.get("refresh_token_ciphertext")),
+        "client_id": connection.get("client_id") if connection else None,
+        "client_secret_hint": (
+            f"...{connection['client_secret_last_four']}"
+            if connection and connection.get("client_secret_last_four")
+            else None
+        ),
+        "channel_id": connection.get("channel_id") if connection else None,
+        "channel_title": connection.get("channel_title") if connection else None,
+        "connected_at": connection.get("connected_at") if connection else None,
+        "redirect_uri": _youtube_redirect_uri(request),
+        "scope": "youtube.upload",
+    }
+
+
+@app.get("/api/admin/youtube")
+def youtube_connection(request: Request) -> dict[str, Any]:
+    return _public_youtube_connection(request)
+
+
+@app.patch("/api/admin/youtube")
+def save_youtube_connection(
+    payload: YouTubeCredentialsRequest, request: Request
+) -> dict[str, Any]:
+    existing = database.youtube_connection()
+    client_secret = (payload.client_secret or "").strip()
+    if client_secret:
+        ciphertext = secret_store.encrypt(client_secret)
+        last_four = secret_store.last_four(client_secret)
+    elif existing:
+        ciphertext = str(existing["client_secret_ciphertext"])
+        last_four = str(existing["client_secret_last_four"])
+    else:
+        raise HTTPException(status_code=422, detail="Client secret is required")
+    now = _now()
+    database.save_youtube_credentials(
+        client_id=payload.client_id.strip(),
+        client_secret_ciphertext=ciphertext,
+        client_secret_last_four=last_four,
+        created_at=existing.get("created_at", now) if existing else now,
+        updated_at=now,
+    )
+    return _public_youtube_connection(request)
+
+
+@app.post("/api/admin/youtube/oauth/start")
+def start_youtube_oauth(request: Request) -> dict[str, str]:
+    connection = database.youtube_connection()
+    if connection is None:
+        raise HTTPException(
+            status_code=409, detail="Configure YouTube client credentials first"
+        )
+    state = secrets.token_urlsafe(40)
+    state_hash = hashlib.sha256(state.encode("utf-8")).hexdigest()
+    now = datetime.now(timezone.utc)
+    redirect_uri = _youtube_redirect_uri(request)
+    database.create_youtube_oauth_state(
+        state_hash=state_hash,
+        redirect_uri=redirect_uri,
+        expires_at=(now + timedelta(minutes=10)).isoformat(),
+        created_at=now.isoformat(),
+    )
+    return {
+        "authorization_url": authorization_url(
+            client_id=connection["client_id"],
+            redirect_uri=redirect_uri,
+            state=state,
+        )
+    }
+
+
+def _youtube_oauth_html(*, success: bool, message: str) -> HTMLResponse:
+    color = "#237957" if success else "#b44741"
+    status = "connected" if success else "failed"
+    script_payload = json.dumps(
+        {"type": "quiz-youtube-oauth", "status": status, "message": message}
+    )
+    safe_message = html.escape(message)
+    document = f"""<!doctype html>
+<html><head><meta charset="utf-8"><title>YouTube authorization</title></head>
+<body style="margin:0;display:grid;place-items:center;min-height:100vh;font-family:system-ui;background:#eef1ef;color:#202622">
+<main style="width:min(420px,calc(100% - 32px));padding:32px;border:1px solid #d7ddda;border-top:5px solid {color};background:white;text-align:center">
+<h1 style="font-size:22px">YouTube {status}</h1><p>{safe_message}</p><p style="font-size:12px;color:#68736d">This window can be closed.</p>
+</main><script>if(window.opener){{window.opener.postMessage({script_payload}, window.location.origin);window.close();}}</script></body></html>"""
+    return HTMLResponse(document)
+
+
+@app.get("/api/admin/youtube/oauth/callback")
+def youtube_oauth_callback(
+    state: str = "", code: str = "", error: str = ""
+) -> HTMLResponse:
+    if not state:
+        return _youtube_oauth_html(success=False, message="OAuth state is missing")
+    state_hash = hashlib.sha256(state.encode("utf-8")).hexdigest()
+    saved_state = database.consume_youtube_oauth_state(
+        state_hash=state_hash, now=_now()
+    )
+    if saved_state is None:
+        return _youtube_oauth_html(
+            success=False, message="Authorization expired or was already used"
+        )
+    if error:
+        return _youtube_oauth_html(
+            success=False, message=f"Google authorization was declined: {error}"
+        )
+    if not code:
+        return _youtube_oauth_html(
+            success=False, message="Google returned no authorization code"
+        )
+    connection = database.youtube_connection()
+    if connection is None:
+        return _youtube_oauth_html(
+            success=False, message="YouTube client credentials are missing"
+        )
+    try:
+        client_secret = secret_store.decrypt(connection["client_secret_ciphertext"])
+        if not client_secret:
+            raise YouTubePublishError("YouTube client secret is unavailable")
+        with YouTubeClient() as client:
+            tokens = client.exchange_code(
+                client_id=connection["client_id"],
+                client_secret=client_secret,
+                code=code,
+                redirect_uri=saved_state["redirect_uri"],
+            )
+            channel_id, channel_title = client.channel_identity(tokens["access_token"])
+        refresh_token = str(tokens["refresh_token"])
+        database.authorize_youtube(
+            refresh_token_ciphertext=secret_store.encrypt(refresh_token),
+            refresh_token_last_four=secret_store.last_four(refresh_token),
+            channel_id=channel_id,
+            channel_title=channel_title,
+            connected_at=_now(),
+        )
+    except (OSError, ValueError, SecretStoreError, YouTubePublishError) as exc:
+        return _youtube_oauth_html(success=False, message=str(exc))
+    label = channel_title or "YouTube channel"
+    return _youtube_oauth_html(success=True, message=f"Connected to {label}")
+
+
+@app.post("/api/admin/youtube/disconnect")
+def disconnect_youtube(request: Request) -> dict[str, Any]:
+    connection = database.youtube_connection()
+    if connection and connection.get("refresh_token_ciphertext"):
+        try:
+            token = secret_store.decrypt(connection["refresh_token_ciphertext"])
+        except SecretStoreError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if token:
+            with YouTubeClient(timeout_seconds=30) as client:
+                client.revoke(token)
+    database.disconnect_youtube(_now())
+    return _public_youtube_connection(request)
 
 
 @app.post("/api/admin/providers")

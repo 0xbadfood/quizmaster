@@ -11,7 +11,7 @@ def lion_document() -> PlanDocument:
 
 def test_migrations_are_idempotent(tmp_path: Path) -> None:
     database = QuizDatabase(tmp_path / "quiz.db")
-    assert database.migrate() == [1, 2, 3, 4, 5, 6]
+    assert database.migrate() == [1, 2, 3, 4, 5, 6, 7]
     assert database.migrate() == []
 
 
@@ -95,6 +95,146 @@ def test_interrupted_video_render_is_recovered(tmp_path: Path) -> None:
 
     assert database.mark_interrupted_videos("2026-08-20T10:02:00+00:00") == 1
     assert database.studio_video("video-running")["status"] == "interrupted"
+
+
+def test_youtube_connection_oauth_state_and_upload_history(tmp_path: Path) -> None:
+    database = QuizDatabase(tmp_path / "quiz.db")
+    database.create_category(
+        name="Geography",
+        slug="geography",
+        display_title="GEOGRAPHY QUIZ",
+        display_tag="Geography",
+        description="Places and features of the world.",
+        editorial_brief="Child-facing geography with deterministic answers.",
+        age_min=5,
+        age_max=10,
+    )
+    database.create_studio_video(
+        {
+            "id": "video-youtube",
+            "category_slug": "geography",
+            "title": "Geography Quiz",
+            "orientation": "landscape",
+            "bundle_version": 3,
+            "selections": [
+                {"set_id": "geography_beginner_01", "question_count": 10}
+            ],
+            "question_count": 10,
+            "status": "complete",
+            "created_at": "2026-08-21T10:00:00+00:00",
+            "updated_at": "2026-08-21T10:00:00+00:00",
+        }
+    )
+
+    connection = database.save_youtube_credentials(
+        client_id="client.apps.googleusercontent.com",
+        client_secret_ciphertext="encrypted-client-secret",
+        client_secret_last_four="cret",
+        created_at="2026-08-21T10:00:00+00:00",
+        updated_at="2026-08-21T10:00:00+00:00",
+    )
+    assert connection["refresh_token_ciphertext"] is None
+    authorized = database.authorize_youtube(
+        refresh_token_ciphertext="encrypted-refresh-token",
+        refresh_token_last_four="oken",
+        channel_id="channel-1",
+        channel_title="Quizmaster",
+        connected_at="2026-08-21T10:01:00+00:00",
+    )
+    assert authorized["channel_title"] == "Quizmaster"
+
+    database.create_youtube_oauth_state(
+        state_hash="state-hash",
+        redirect_uri="https://quiz.example/callback",
+        expires_at="2026-08-21T10:10:00+00:00",
+        created_at="2026-08-21T10:00:00+00:00",
+    )
+    state = database.consume_youtube_oauth_state(
+        state_hash="state-hash", now="2026-08-21T10:02:00+00:00"
+    )
+    assert state is not None
+    assert state["redirect_uri"] == "https://quiz.example/callback"
+    assert (
+        database.consume_youtube_oauth_state(
+            state_hash="state-hash", now="2026-08-21T10:03:00+00:00"
+        )
+        is None
+    )
+
+    upload = database.create_youtube_upload(
+        {
+            "id": "upload-1",
+            "video_id": "video-youtube",
+            "title": "Geography Quiz",
+            "description": "A quiz description",
+            "privacy_status": "private",
+            "status": "queued",
+            "created_at": "2026-08-21T10:04:00+00:00",
+            "updated_at": "2026-08-21T10:04:00+00:00",
+        }
+    )
+    assert upload["status"] == "queued"
+    database.attach_youtube_upload_job(
+        "upload-1", job_id="job-1", updated_at="2026-08-21T10:05:00+00:00"
+    )
+    complete = database.update_youtube_upload(
+        "upload-1",
+        status="complete",
+        youtube_video_id="youtube-1",
+        youtube_url="https://youtu.be/youtube-1",
+        updated_at="2026-08-21T10:06:00+00:00",
+    )
+    assert complete["job_id"] == "job-1"
+    assert database.latest_youtube_upload("video-youtube")["youtube_video_id"] == (
+        "youtube-1"
+    )
+
+
+def test_interrupted_youtube_upload_is_recovered(tmp_path: Path) -> None:
+    database = QuizDatabase(tmp_path / "quiz.db")
+    database.create_category(
+        name="Space",
+        slug="space",
+        display_title="SPACE QUIZ",
+        display_tag="Space",
+        description="Planets and exploration.",
+        editorial_brief="Age-appropriate facts about space.",
+        age_min=5,
+        age_max=10,
+    )
+    database.create_studio_video(
+        {
+            "id": "video-uploading",
+            "category_slug": "space",
+            "title": "Space Quiz",
+            "orientation": "portrait",
+            "bundle_version": 1,
+            "selections": [{"set_id": "space_beginner_01", "question_count": 10}],
+            "question_count": 10,
+            "status": "complete",
+            "created_at": "2026-08-21T10:00:00+00:00",
+            "updated_at": "2026-08-21T10:00:00+00:00",
+        }
+    )
+    database.create_youtube_upload(
+        {
+            "id": "upload-running",
+            "video_id": "video-uploading",
+            "title": "Space Quiz",
+            "description": "A space quiz",
+            "privacy_status": "unlisted",
+            "status": "uploading",
+            "created_at": "2026-08-21T10:01:00+00:00",
+            "updated_at": "2026-08-21T10:01:00+00:00",
+        }
+    )
+
+    assert database.mark_interrupted_youtube_uploads(
+        "2026-08-21T10:02:00+00:00"
+    ) == 1
+    interrupted = database.youtube_upload("upload-running")
+    assert interrupted["status"] == "interrupted"
+    assert "service restarted" in interrupted["error"]
 
 
 def test_category_metadata_is_persisted_and_slug_is_immutable(tmp_path: Path) -> None:

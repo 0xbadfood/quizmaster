@@ -42,7 +42,7 @@ uv run uvicorn quiz_harness.webapi:app --host 0.0.0.0 --port 9061
 cd webui && npm run dev
 ```
 
-Open `http://localhost:9060`.
+Open `http://localhost:9061`.
 
 ## Caddy deployment
 
@@ -71,6 +71,8 @@ it as `/etc/systemd/system/quiz.service`, then enable it with
 Configuration is available through `QUIZ_DATABASE_PATH`, `QUIZ_ASSET_ROOT`,
 `QUIZ_BUNDLE_ROOT`, `QUIZ_VLLM_BASE_URL`, `QUIZ_MAGEFLOW_BASE_URL`,
 `QUIZ_IMAGESTUDIO_BASE_URL`, `QUIZ_ADMIN_USERNAME`, and `QUIZ_ADMIN_PASSWORD`.
+Set `QUIZ_STUDIO_PUBLIC_BASE_URL` to the externally visible HTTPS origin when the
+proxy headers do not provide it reliably; this is used to build OAuth callback URLs.
 
 ### Studio provider administration
 
@@ -80,6 +82,22 @@ they are written to the database; only a masked suffix is returned to the UI.
 Set `QUIZ_SECRET_KEY` to a stable Fernet key in production, or preserve
 `data/.provider_secret_key`, which is generated with owner-only permissions on
 first startup. Losing both values makes stored provider credentials unreadable.
+
+### YouTube publishing
+
+Enable the YouTube Data API v3 in a Google Cloud project and create an OAuth 2.0
+client with application type **Web application**. In Studio Admin, open **YouTube
+publishing**, enter the client ID and secret, and copy the displayed callback URL
+into the client's **Authorized redirect URIs** before selecting **Connect YouTube**.
+The connection requests the `youtube.upload` scope and stores its refresh token in
+the same encrypted secret store used by provider credentials.
+
+Completed Video Studio renders expose **Upload to YouTube**. The publish dialog
+accepts an edited title, description, and visibility; uploads default to private
+and are marked as made for kids in YouTube's Education category. **Generate with
+AI** creates a description from the exact question sets used by the render through
+any enabled LLM-capable provider. Upload progress and resulting YouTube URLs are
+retained with the video history.
 
 Provider tests run as durable background jobs and retain their progress and result
 history in SQLite. Model-capable endpoints are discovered during the test. The
