@@ -284,10 +284,10 @@ const LandscapeChoiceCard: React.FC<{
 }> = ({ choice, letter, badge, accent }) => {
   const fitted = fitText({
     text: choice.label,
-    maxWidth: 430,
-    maxHeight: 112,
-    maxFontSize: 50,
-    minFontSize: 30,
+    maxWidth: 345,
+    maxHeight: 92,
+    maxFontSize: 40,
+    minFontSize: 24,
     maxLines: 2,
     lineHeight: 1.08,
     fontFamily: '"DejaVu Sans"',
@@ -297,7 +297,7 @@ const LandscapeChoiceCard: React.FC<{
     <div
       style={{
         position: "relative",
-        height: 180,
+        height: 500,
         overflow: "visible",
         borderRadius: 22,
         backgroundColor: "rgba(255,255,255,0.97)",
@@ -309,10 +309,10 @@ const LandscapeChoiceCard: React.FC<{
         src={staticFile(choice.image)}
         style={{
           position: "absolute",
-          top: 10,
-          left: 118,
-          width: 238,
-          height: 152,
+          top: 28,
+          left: 38,
+          width: 345,
+          height: 340,
           objectFit: "contain",
           borderRadius: 15,
           backgroundColor: colors.white,
@@ -323,10 +323,10 @@ const LandscapeChoiceCard: React.FC<{
       <div
         style={{
           position: "absolute",
-          left: 385,
-          right: 28,
-          top: 24,
-          bottom: 24,
+          left: 38,
+          right: 38,
+          top: 386,
+          bottom: 22,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -343,10 +343,10 @@ const LandscapeChoiceCard: React.FC<{
       <div
         style={{
           position: "absolute",
-          top: 39,
-          left: 20,
-          width: 94,
-          height: 94,
+          top: -18,
+          left: -14,
+          width: 88,
+          height: 88,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -360,7 +360,7 @@ const LandscapeChoiceCard: React.FC<{
           style={{
             position: "relative",
             color: colors.white,
-            fontSize: 45,
+            fontSize: 42,
             fontWeight: 900,
             textShadow: "0 3px 3px rgba(0,0,0,0.45)",
           }}
@@ -744,10 +744,8 @@ const QuestionScene: React.FC<{
               right: 80,
               top: 510,
               display: "grid",
-              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-              gridTemplateRows: "repeat(2, 180px)",
-              columnGap: 20,
-              rowGap: 18,
+              gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+              gap: 20,
               opacity: 1 - revealProgress,
               transform: `translateY(${revealProgress * 35}px)`,
             }}
