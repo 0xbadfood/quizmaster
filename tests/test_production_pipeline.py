@@ -10,10 +10,38 @@ from pydantic import ValidationError
 
 from quiz_harness.production_pipeline import (
     CategoryProductionPipeline,
+    CategoryPipelineError,
     CategoryPipelineMetadata,
     PipelineCheckpoint,
     load_pipeline_metadata,
 )
+
+
+def _pipeline_for_validation(**overrides: object) -> CategoryProductionPipeline:
+    pipeline = object.__new__(CategoryProductionPipeline)
+    defaults: dict[str, object] = {
+        "background": None,
+        "question_batch_size": 50,
+        "max_question_batches": 6,
+        "sets_per_difficulty": 10,
+    }
+    defaults.update(overrides)
+    pipeline.config = SimpleNamespace(**defaults)
+    return pipeline
+
+
+def test_target_questions_ceiling_allows_five_hundred_but_not_more() -> None:
+    _pipeline_for_validation(target_questions=500)._validate_inputs()
+    with pytest.raises(CategoryPipelineError, match="between 1 and 500"):
+        _pipeline_for_validation(target_questions=501)._validate_inputs()
+
+
+def test_sets_per_difficulty_ceiling_allows_twenty_but_not_more() -> None:
+    _pipeline_for_validation(target_questions=200, sets_per_difficulty=20)._validate_inputs()
+    with pytest.raises(CategoryPipelineError, match="between 1 and 20"):
+        _pipeline_for_validation(
+            target_questions=200, sets_per_difficulty=21
+        )._validate_inputs()
 
 
 def _metadata(**overrides: object) -> dict[str, object]:
@@ -127,7 +155,7 @@ def test_bank_scheduler_uses_six_total_balanced_batches(monkeypatch: pytest.Monk
     pipeline.database = Database()
     pipeline.questions = Questions()
     pipeline.checkpoint = Checkpoint()
-    pipeline._provider = lambda *_: {"id": "openai-images"}
+    pipeline._provider = lambda *_: {"id": "openai-images", "provider_type": "openai_images"}
     pipeline._secret = lambda *_: "secret"
     pipeline._bank_total = lambda _slug, difficulty: totals[difficulty]
     pipeline._log = lambda *_: None
@@ -145,6 +173,59 @@ def test_bank_scheduler_uses_six_total_balanced_batches(monkeypatch: pytest.Monk
     assert result["beginner"]["total"] == 150
     assert result["intermediate"]["total"] == 150
     assert pipeline.checkpoint.updates[-1]["batches_used"] == 6
+
+
+def test_bank_generation_accepts_local_provider_without_a_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    totals = {"beginner": 150, "intermediate": 150}
+
+    class Database:
+        @staticmethod
+        def studio_categories() -> list[dict[str, object]]:
+            return []
+
+    class Questions:
+        @staticmethod
+        def quarantine_contract_invalid(
+            category_slug: str, difficulty: str
+        ) -> dict[str, object]:
+            return {"quarantined": 0, "question_ids": []}
+
+    class Checkpoint:
+        def phase(self, name: str) -> dict[str, object]:
+            return {}
+
+        def update(self, name: str, value: dict[str, object]) -> None:
+            return None
+
+    def generate(**_: object) -> tuple[list[dict[str, object]], str]:
+        raise AssertionError("bank is already full; generation should not run")
+
+    monkeypatch.setattr("quiz_harness.production_pipeline.generate_questions", generate)
+    pipeline = object.__new__(CategoryProductionPipeline)
+    pipeline.config = SimpleNamespace(
+        question_provider_id="llm-default",
+        question_model="qwen2.5-14b",
+        target_questions=150,
+        question_batch_size=50,
+        max_question_batches=6,
+    )
+    pipeline.database = Database()
+    pipeline.questions = Questions()
+    pipeline.checkpoint = Checkpoint()
+    pipeline._provider = lambda *_: {
+        "id": "llm-default",
+        "provider_type": "openai_compatible_llm",
+    }
+    pipeline._secret = lambda *_: None
+    pipeline._bank_total = lambda _slug, difficulty: totals[difficulty]
+    pipeline._log = lambda *_: None
+
+    result = pipeline._generate_banks({"slug": "space", "name": "Space"})
+
+    assert result["beginner"]["total"] == 150
+    assert result["intermediate"]["total"] == 150
 
 
 def test_existing_background_is_reused_without_planning(tmp_path: Path) -> None:

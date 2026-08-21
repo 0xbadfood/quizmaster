@@ -125,7 +125,7 @@ provider, model, and validation result in the retained job record.
 
 The Sets stage reads set documents under `visual_quiz_qwen/<category>/sets/` and
 combines them with review state stored in SQLite. It reports safe optional selection
-capacity for each difficulty; ten sets per difficulty is a recommended maximum, not
+capacity for each difficulty; twenty sets per difficulty is a recommended maximum, not
 a pipeline gate. Selection uses a configured OpenAI-compatible local LLM to choose
 ten questions from each deterministic batch of fifteen candidates.
 
@@ -194,7 +194,7 @@ from `gpt-5.6-luna` through the configured `openai-images` connection. Each requ
 contains at most 50 candidates, and the bank stage stops after six persisted batch
 attempts in total if local validation and deduplication cannot fill both levels. The
 scheduler alternates levels, producing three calls per level in the normal case. Qwen then
-selects as many ten-question sets as the usable banks permit, up to ten per
+selects as many ten-question sets as the usable banks permit, up to twenty per
 difficulty. Partial set selections remain committed.
 
 After selection, two workers run concurrently. One generates and Whisper-audits

@@ -141,7 +141,7 @@ class BankQuestion(VisualQuestion):
 
 
 class BankIngestionRejection(StrictModel):
-    question_index: Annotated[int, Field(ge=1, le=150)]
+    question_index: Annotated[int, Field(ge=1, le=500)]
     source_question_id: Identifier
     reasons: Annotated[list[str], Field(min_length=1, max_length=8)]
 
@@ -154,7 +154,7 @@ class VisualBankDocument(StrictModel):
     source_model: Annotated[str, Field(min_length=2, max_length=80)]
     source_response_id: Annotated[str, Field(min_length=2, max_length=120)]
     generated_at_utc: Annotated[str, Field(min_length=10, max_length=60)]
-    questions: Annotated[list[BankQuestion], Field(min_length=1, max_length=150)]
+    questions: Annotated[list[BankQuestion], Field(min_length=1, max_length=500)]
     ingestion_rejections: list[BankIngestionRejection] = []
 
     @model_validator(mode="after")

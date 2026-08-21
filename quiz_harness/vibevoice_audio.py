@@ -57,6 +57,33 @@ DEFAULT_INCORRECT_PHRASES = (
 )
 
 
+def resolve_narrator_voice(settings: dict[str, Any]) -> dict[str, Any]:
+    """Resolve the active narrator voice from a VibeVoice provider's settings.
+
+    Providers may hold a library of named voices (`settings["voices"]`, each
+    with its own reference audio/transcript/language) plus an
+    `active_voice_id` pointer. Providers created before that library existed
+    only have flat `reference_audio_path`/`reference_transcript`/`language`
+    fields, which this falls back to unchanged.
+    """
+    voices = settings.get("voices") or []
+    active_id = settings.get("active_voice_id")
+    voice = next((item for item in voices if item.get("id") == active_id), None)
+    if voice is None and voices:
+        voice = voices[0]
+    if voice is not None:
+        return {
+            "reference_audio_path": voice.get("reference_audio_path"),
+            "reference_transcript": voice.get("reference_transcript") or "",
+            "language": voice.get("language") or "en",
+        }
+    return {
+        "reference_audio_path": settings.get("reference_audio_path"),
+        "reference_transcript": settings.get("reference_transcript") or "",
+        "language": settings.get("language") or "en_indian",
+    }
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 

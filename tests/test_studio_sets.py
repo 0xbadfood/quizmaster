@@ -3,9 +3,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from quiz_harness.database import QuizDatabase
 from quiz_harness.qwen_selection import QwenSelectionError
-from quiz_harness.studio_sets import QuizSetStore
+from quiz_harness.studio_sets import MAX_SETS_PER_DIFFICULTY, QuizSetError, QuizSetStore
 from quiz_harness.visual_bank import (
     BankQuestion,
     VisualBankDocument,
@@ -145,3 +147,28 @@ def test_partial_selection_keeps_completed_checkpoint(
     assert result["next_set_number"] == 2
     assert (tmp_path / "source/birds/sets/beginner/birds_beginner_001.json").exists()
     assert sum(item.state == "allocated" for item in load_bank(bank_path).questions) == 10
+
+
+def test_selection_is_capped_at_twenty_sets_per_difficulty(tmp_path: Path) -> None:
+    store, _, bank_path = make_store(tmp_path)
+    bank = load_bank(bank_path)
+    sets_dir = tmp_path / "source/birds/sets/beginner"
+    sets_dir.mkdir(parents=True)
+    for set_number in range(1, MAX_SETS_PER_DIFFICULTY + 1):
+        quiz_set = build_visual_quiz_set(
+            bank, bank.questions[:10], set_number=set_number, seed=set_number
+        )
+        write_model(sets_dir / f"{quiz_set.set_id}.json", quiz_set)
+
+    with pytest.raises(QuizSetError, match="at most 0"):
+        store.select_sets(
+            category_slug="birds",
+            difficulty="beginner",
+            count=1,
+            client=object(),
+            model="selector-model",
+            seed=1,
+            strictness="strict",
+            provider_id="llm-default",
+            progress=lambda *_: None,
+        )

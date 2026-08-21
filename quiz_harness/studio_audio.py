@@ -8,7 +8,11 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .audio_audit import AudioAuditConfig, WhisperAuditClient
-from .vibevoice_audio import VibeVoiceChunkClient, generate_category_quiz_audio
+from .vibevoice_audio import (
+    VibeVoiceChunkClient,
+    generate_category_quiz_audio,
+    resolve_narrator_voice,
+)
 
 
 class StudioAudioError(ValueError):
@@ -321,7 +325,8 @@ class StudioAudioStore:
         if provider.get("provider_type") != "vibevoice":
             raise StudioAudioError("audio generation requires a VibeVoice provider")
         settings = provider.get("settings", {})
-        reference_audio = Path(str(settings.get("reference_audio_path") or ""))
+        narrator = resolve_narrator_voice(settings)
+        reference_audio = Path(str(narrator.get("reference_audio_path") or ""))
         if not reference_audio.is_file():
             raise StudioAudioError("upload a valid VibeVoice reference WAV in Admin")
         if clip_ids:
@@ -339,7 +344,7 @@ class StudioAudioStore:
             client = VibeVoiceChunkClient(
                 endpoint=provider["base_url"],
                 reference_audio=reference_audio,
-                lang_key=str(settings.get("language") or "en_indian"),
+                lang_key=str(narrator.get("language") or "en_indian"),
                 cfg_scale=float(settings.get("cfg_scale") or 1.3),
                 timeout_seconds=900,
                 auditor=auditor,
@@ -361,7 +366,7 @@ class StudioAudioStore:
                 category_root=root,
                 category=category["name"],
                 client=client,
-                reference_transcript=str(settings.get("reference_transcript") or ""),
+                reference_transcript=str(narrator.get("reference_transcript") or ""),
                 clip_ids=clip_ids,
                 force=force,
                 progress=report,

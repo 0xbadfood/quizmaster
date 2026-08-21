@@ -25,7 +25,11 @@ from .secure_store import SecretStore
 from .studio_audio import StudioAudioStore
 from .studio_catalog import category_metadata_status
 from .studio_publish import StudioPublishStore
-from .studio_questions import QuestionBankStore, generate_questions
+from .studio_questions import (
+    QUESTION_GENERATION_PROVIDER_TYPES,
+    QuestionBankStore,
+    generate_questions,
+)
 from .studio_sets import QuizSetStore
 from .studio_visuals import StudioVisualStore
 from .visual_generation_queue import VisualGenerationQueue
@@ -194,10 +198,10 @@ class CategoryProductionPipeline:
             raise CategoryPipelineError("question batch size must be between 1 and 50")
         if not 1 <= self.config.max_question_batches <= 6:
             raise CategoryPipelineError("maximum question batches must be between 1 and 6")
-        if not 1 <= self.config.target_questions <= 150:
-            raise CategoryPipelineError("question target must be between 1 and 150")
-        if not 1 <= self.config.sets_per_difficulty <= 10:
-            raise CategoryPipelineError("set target must be between 1 and 10")
+        if not 1 <= self.config.target_questions <= 500:
+            raise CategoryPipelineError("question target must be between 1 and 500")
+        if not 1 <= self.config.sets_per_difficulty <= 20:
+            raise CategoryPipelineError("set target must be between 1 and 20")
 
     def _provider(self, provider_id: str, expected: set[str]) -> dict[str, Any]:
         try:
@@ -279,10 +283,10 @@ class CategoryProductionPipeline:
 
     def _generate_banks(self, category: dict[str, Any]) -> dict[str, Any]:
         provider = self._provider(
-            self.config.question_provider_id, {"openai_images"}
+            self.config.question_provider_id, QUESTION_GENERATION_PROVIDER_TYPES
         )
         secret = self._secret(provider)
-        if not secret:
+        if provider["provider_type"] == "openai_images" and not secret:
             raise CategoryPipelineError("OpenAI question provider has no API key")
         provider = {**provider, "default_model": self.config.question_model}
         sibling_names = [

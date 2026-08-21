@@ -14,6 +14,7 @@ from quiz_harness.vibevoice_audio import (
     _encode_vibevoice_mp3,
     ensure_global_quiz_audio,
     generate_category_quiz_audio,
+    resolve_narrator_voice,
     sync_global_audio_to_flutter,
 )
 
@@ -24,6 +25,65 @@ def test_amit_reference_transcript_is_exact() -> None:
         "It is also one of the world's top ten centres of commerce in terms of global "
         "financial flow."
     )
+
+
+def test_resolve_narrator_voice_falls_back_to_legacy_flat_fields() -> None:
+    settings = {
+        "reference_audio_path": "/data/amit.wav",
+        "reference_transcript": "Legacy transcript",
+        "language": "en_indian",
+    }
+    assert resolve_narrator_voice(settings) == {
+        "reference_audio_path": "/data/amit.wav",
+        "reference_transcript": "Legacy transcript",
+        "language": "en_indian",
+    }
+
+
+def test_resolve_narrator_voice_uses_active_voice_from_library() -> None:
+    settings = {
+        "reference_audio_path": "/data/amit.wav",
+        "reference_transcript": "Legacy transcript",
+        "language": "en_indian",
+        "voices": [
+            {
+                "id": "legacy",
+                "name": "Amit",
+                "reference_audio_path": "/data/amit.wav",
+                "reference_transcript": "Legacy transcript",
+                "language": "en_indian",
+            },
+            {
+                "id": "speaker1",
+                "name": "Quizmaster Speaker 1",
+                "reference_audio_path": "/data/speaker1.wav",
+                "reference_transcript": "Welcome back to Ultimate Trivia Dash!",
+                "language": "en",
+            },
+        ],
+        "active_voice_id": "speaker1",
+    }
+    assert resolve_narrator_voice(settings) == {
+        "reference_audio_path": "/data/speaker1.wav",
+        "reference_transcript": "Welcome back to Ultimate Trivia Dash!",
+        "language": "en",
+    }
+
+
+def test_resolve_narrator_voice_defaults_to_first_voice_when_active_id_is_stale() -> None:
+    settings = {
+        "voices": [
+            {
+                "id": "speaker1",
+                "name": "Quizmaster Speaker 1",
+                "reference_audio_path": "/data/speaker1.wav",
+                "reference_transcript": "Hello",
+                "language": "en",
+            },
+        ],
+        "active_voice_id": "missing-id",
+    }
+    assert resolve_narrator_voice(settings)["reference_audio_path"] == "/data/speaker1.wav"
 
 
 def test_vibevoice_encoder_adds_800ms_tail_padding(

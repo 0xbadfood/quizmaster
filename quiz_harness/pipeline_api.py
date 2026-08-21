@@ -33,6 +33,10 @@ from .production_pipeline import (
 from .provider_service import PROVIDER_TYPES, normalize_base_url, run_provider_test
 from .secure_store import SecretStore
 from .studio_publish import StudioPublishError, StudioPublishStore
+from .studio_questions import (
+    QUESTION_GENERATION_PROVIDER_TYPES,
+    resolve_question_provider_default,
+)
 from .vibevoice_audio import DEFAULT_REFERENCE_TRANSCRIPT
 
 
@@ -111,10 +115,10 @@ class PipelineProviders(StrictModel):
 
 
 class PipelineSettings(StrictModel):
-    target_questions: int = Field(default=150, ge=1, le=150)
+    target_questions: int = Field(default=150, ge=1, le=500)
     question_batch_size: int = Field(default=50, ge=1, le=50)
     max_question_batches: int = Field(default=6, ge=1, le=6)
-    sets_per_difficulty: int = Field(default=10, ge=1, le=10)
+    sets_per_difficulty: int = Field(default=10, ge=1, le=20)
     strictness: str = Field(default="strict", pattern="^(strict|balanced)$")
     seed: int = Field(default=20260805, ge=0, le=2_147_483_647)
     image_quality: str = Field(default="medium", pattern="^(low|medium|high)$")
@@ -428,7 +432,7 @@ class PipelineApiService:
 
     def validate_pipeline_providers(self, selected: PipelineProviders) -> None:
         expected = (
-            (selected.question_provider, {"openai_images"}),
+            (selected.question_provider, QUESTION_GENERATION_PROVIDER_TYPES),
             (selected.qwen_provider, {"openai_compatible_llm"}),
             (selected.background_provider, {"openai_images", "imagestudio"}),
             (selected.tile_provider, {"openai_images", "imagestudio"}),
@@ -903,14 +907,20 @@ def create_app(
             for item in service.database.provider_connections()
             if item["enabled"]
         ]
+        default_question_provider, default_question_model = (
+            resolve_question_provider_default(service.database)
+        )
         return {
             "defaults": {
-                "providers": PipelineProviders().model_dump(mode="json"),
+                "providers": PipelineProviders(
+                    question_provider=default_question_provider,
+                    question_model=default_question_model or "",
+                ).model_dump(mode="json"),
                 "settings": PipelineSettings().model_dump(mode="json"),
             },
             "providers": providers,
             "roles": {
-                "question": ["openai_images"],
+                "question": ["openai_images", "openai_compatible_llm"],
                 "qwen": ["openai_compatible_llm"],
                 "background": ["openai_images", "imagestudio"],
                 "tile": ["openai_images", "imagestudio"],

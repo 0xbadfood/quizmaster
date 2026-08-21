@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Literal
 
-from fastapi import Cookie, FastAPI, HTTPException, Request, Response
+from fastapi import Cookie, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -50,6 +50,8 @@ from .studio_questions import (
     QuestionBankError,
     QuestionBankStore,
     generate_questions,
+    question_source_setting,
+    set_question_source_setting,
 )
 from .studio_sets import QuizSetError, QuizSetStore
 from .studio_audio import StudioAudioError, StudioAudioStore
@@ -318,6 +320,12 @@ class ProviderUpdateRequest(BaseModel):
     enabled: bool | None = None
 
 
+class QuestionSourceUpdateRequest(BaseModel):
+    mode: str = Field(pattern="^(openai|local)$")
+    provider_id: str = Field(min_length=1, max_length=80)
+    model: str | None = Field(default=None, max_length=200)
+
+
 class QuestionChoiceRequest(BaseModel):
     object_key: str = Field(min_length=1, max_length=80)
     label: str = Field(min_length=2, max_length=50)
@@ -339,7 +347,7 @@ class QuestionReviewRequest(BaseModel):
 
 class QuestionBulkReviewRequest(BaseModel):
     difficulty: str = Field(pattern="^(beginner|intermediate)$")
-    question_ids: list[str] = Field(min_length=1, max_length=100)
+    question_ids: list[str] = Field(min_length=1, max_length=500)
     status: str = Field(pattern="^(approved|needs_edit)$")
 
 
@@ -358,7 +366,7 @@ class QuestionGenerationRequest(BaseModel):
 
 class QuizSetSelectionRequest(BaseModel):
     difficulty: str = Field(pattern="^(beginner|intermediate)$")
-    count: int = Field(default=1, ge=1, le=10)
+    count: int = Field(default=1, ge=1, le=20)
     provider_id: str = Field(min_length=2, max_length=100)
     model: str | None = Field(default=None, min_length=2, max_length=200)
     strictness: str = Field(default="strict", pattern="^(strict|balanced)$")
@@ -411,7 +419,7 @@ class LandscapeBackgroundGenerationRequest(BaseModel):
 
 class AudioGenerationRequest(BaseModel):
     provider_id: str = Field(min_length=2, max_length=100)
-    clip_ids: list[str] = Field(default_factory=list, max_length=400)
+    clip_ids: list[str] = Field(default_factory=list, max_length=800)
     force: bool = False
     audit_repairs: int = Field(default=2, ge=0, le=4)
 
@@ -1765,6 +1773,28 @@ def studio_video(video_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="Video not found") from exc
 
 
+@app.delete("/api/studio/videos/{video_id}")
+def delete_studio_video(video_id: str) -> dict[str, Any]:
+    try:
+        record = database.studio_video(video_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Video not found") from exc
+    if record["status"] in {"queued", "rendering"}:
+        raise HTTPException(
+            status_code=409, detail="Cannot delete a video while it is rendering"
+        )
+    database.delete_studio_video(video_id)
+    file_path = record.get("file_path")
+    if file_path:
+        try:
+            resolved = Path(file_path).resolve()
+            if resolved.is_relative_to(VIDEO_ROOT.resolve()) and resolved.is_file():
+                resolved.unlink()
+        except OSError:
+            pass
+    return {"status": "deleted", "video_id": video_id}
+
+
 @app.get("/api/studio/videos/{video_id}/stream")
 def stream_studio_video(video_id: str) -> FileResponse:
     path, _ = _studio_video_file(video_id)
@@ -1965,6 +1995,24 @@ def provider_connections() -> dict[str, Any]:
             _public_provider(item) for item in database.provider_connections()
         ],
     }
+
+
+@app.get("/api/admin/question-source")
+def question_source() -> dict[str, Any]:
+    return question_source_setting(database)
+
+
+@app.patch("/api/admin/question-source")
+def update_question_source(payload: QuestionSourceUpdateRequest) -> dict[str, Any]:
+    try:
+        return set_question_source_setting(
+            database,
+            mode=payload.mode,
+            provider_id=payload.provider_id,
+            model=payload.model,
+        )
+    except QuestionBankError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 def _youtube_redirect_uri(request: Request) -> str:
@@ -2191,16 +2239,9 @@ def update_provider_connection(
     )
 
 
-@app.post("/api/admin/providers/{provider_id}/reference-audio")
-async def upload_provider_reference_audio(
-    provider_id: str, request: Request
-) -> dict[str, Any]:
-    try:
-        provider = database.provider_connection(provider_id)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail="Provider not found") from exc
-    if provider["provider_type"] != "vibevoice":
-        raise HTTPException(status_code=422, detail="Reference audio is only valid for VibeVoice")
+async def _read_and_validate_reference_wav(
+    request: Request,
+) -> tuple[bytes, int, int, float]:
     content_type = request.headers.get("content-type", "").split(";", 1)[0]
     if content_type not in {"audio/wav", "audio/x-wav", "audio/wave", "application/octet-stream"}:
         raise HTTPException(status_code=422, detail="Reference audio must be a WAV file")
@@ -2223,12 +2264,34 @@ async def upload_provider_reference_audio(
             status_code=422,
             detail="Reference WAV must be 2-120 seconds at an 8-96 kHz sample rate",
         )
-    safe_id = "".join(character for character in provider_id if character.isalnum() or character in "-_")
-    output = PROVIDER_AUDIO_ROOT / safe_id / "reference.wav"
-    output.parent.mkdir(parents=True, exist_ok=True)
-    temporary = output.with_suffix(".wav.tmp")
+    return data, sample_rate, channels, duration
+
+
+def _write_wav_atomic(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".wav.tmp")
     temporary.write_bytes(data)
-    temporary.replace(output)
+    temporary.replace(path)
+
+
+def _provider_audio_root(provider_id: str) -> Path:
+    safe_id = "".join(character for character in provider_id if character.isalnum() or character in "-_")
+    return PROVIDER_AUDIO_ROOT / safe_id
+
+
+@app.post("/api/admin/providers/{provider_id}/reference-audio")
+async def upload_provider_reference_audio(
+    provider_id: str, request: Request
+) -> dict[str, Any]:
+    try:
+        provider = database.provider_connection(provider_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Provider not found") from exc
+    if provider["provider_type"] != "vibevoice":
+        raise HTTPException(status_code=422, detail="Reference audio is only valid for VibeVoice")
+    data, sample_rate, channels, duration = await _read_and_validate_reference_wav(request)
+    output = _provider_audio_root(provider_id) / "reference.wav"
+    _write_wav_atomic(output, data)
     settings = {
         **provider.get("settings", {}),
         "reference_audio_path": str(output),
@@ -2243,6 +2306,54 @@ async def upload_provider_reference_audio(
             "channels": channels,
         },
     }
+
+
+@app.post("/api/admin/providers/{provider_id}/voices")
+async def add_provider_voice(
+    provider_id: str,
+    request: Request,
+    name: str = Query(..., min_length=2, max_length=80),
+    reference_transcript: str = Query(..., min_length=10, max_length=2000),
+    language: str = Query("en", min_length=2, max_length=20),
+) -> dict[str, Any]:
+    try:
+        provider = database.provider_connection(provider_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Provider not found") from exc
+    if provider["provider_type"] != "vibevoice":
+        raise HTTPException(status_code=422, detail="Narrator voices are only valid for VibeVoice")
+    data, *_rest = await _read_and_validate_reference_wav(request)
+
+    settings = dict(provider.get("settings", {}))
+    voices = list(settings.get("voices") or [])
+    if not voices and settings.get("reference_audio_path"):
+        voices.append(
+            {
+                "id": "legacy",
+                "name": "Amit",
+                "reference_audio_path": settings["reference_audio_path"],
+                "reference_transcript": (
+                    settings.get("reference_transcript") or DEFAULT_REFERENCE_TRANSCRIPT
+                ),
+                "language": settings.get("language") or "en_indian",
+            }
+        )
+
+    voice_id = uuid.uuid4().hex[:12]
+    output = _provider_audio_root(provider_id) / "voices" / f"{voice_id}.wav"
+    _write_wav_atomic(output, data)
+    voice = {
+        "id": voice_id,
+        "name": name.strip(),
+        "reference_audio_path": str(output),
+        "reference_transcript": reference_transcript.strip(),
+        "language": language.strip() or "en",
+    }
+    voices.append(voice)
+    settings["voices"] = voices
+    settings["active_voice_id"] = voice_id
+    updated = database.update_provider_connection(provider_id, {"settings": settings})
+    return {"provider": _public_provider(updated), "voice": voice}
 
 
 @app.post("/api/admin/providers/{provider_id}/test")

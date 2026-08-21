@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from quiz_harness.database import QuizDatabase
 from quiz_harness.models import PlanDocument
 
@@ -11,7 +13,7 @@ def lion_document() -> PlanDocument:
 
 def test_migrations_are_idempotent(tmp_path: Path) -> None:
     database = QuizDatabase(tmp_path / "quiz.db")
-    assert database.migrate() == [1, 2, 3, 4, 5, 6, 7]
+    assert database.migrate() == [1, 2, 3, 4, 5, 6, 7, 8]
     assert database.migrate() == []
 
 
@@ -64,6 +66,63 @@ def test_video_catalog_persists_render_history(tmp_path: Path) -> None:
     assert complete["job_id"] == "job-1"
     assert complete["duration_seconds"] == 240.5
     assert database.studio_videos("geography")[0]["file_name"] == "geography.mp4"
+
+
+def test_deleting_a_studio_video_returns_it_and_cascades_youtube_uploads(
+    tmp_path: Path,
+) -> None:
+    database = QuizDatabase(tmp_path / "quiz.db")
+    category = database.create_category(
+        name="Geography",
+        slug="geography",
+        display_title="GEOGRAPHY QUIZ",
+        display_tag="Geography",
+        description="Places and features of the world.",
+        editorial_brief="Child-facing geography with deterministic answers.",
+        age_min=5,
+        age_max=10,
+    )
+    database.create_studio_video(
+        {
+            "id": "video-1",
+            "category_slug": category["slug"],
+            "title": "Geography · Landscape · 20 questions",
+            "orientation": "landscape",
+            "bundle_version": 3,
+            "selections": [{"set_id": "geography_beginner_01", "question_count": 10}],
+            "question_count": 10,
+            "status": "complete",
+            "created_at": "2026-08-20T10:00:00+00:00",
+            "updated_at": "2026-08-20T10:00:00+00:00",
+        }
+    )
+    database.update_studio_video(
+        "video-1",
+        status="complete",
+        file_path="/tmp/geography.mp4",
+        updated_at="2026-08-20T10:05:00+00:00",
+    )
+    database.create_youtube_upload(
+        {
+            "id": "upload-1",
+            "video_id": "video-1",
+            "title": "Geography quiz",
+            "description": "",
+            "privacy_status": "private",
+            "status": "complete",
+            "created_at": "2026-08-20T10:06:00+00:00",
+            "updated_at": "2026-08-20T10:06:00+00:00",
+        }
+    )
+
+    deleted = database.delete_studio_video("video-1")
+
+    assert deleted["file_path"] == "/tmp/geography.mp4"
+    with pytest.raises(KeyError):
+        database.studio_video("video-1")
+    assert database.studio_videos("geography") == []
+    with pytest.raises(KeyError):
+        database.youtube_upload("upload-1")
 
 
 def test_interrupted_video_render_is_recovered(tmp_path: Path) -> None:
@@ -425,3 +484,17 @@ def test_interrupted_job_recovery_can_be_scoped_by_kind(tmp_path: Path) -> None:
     assert count == 1
     assert database.studio_job("pipeline")["status"] == "interrupted"
     assert database.studio_job("visual")["status"] == "queued"
+
+
+def test_app_settings_get_and_set_round_trip(tmp_path: Path) -> None:
+    database = QuizDatabase(tmp_path / "quiz.db")
+    assert database.get_setting("question_generation_source") is None
+    assert database.get_setting("question_generation_source", "fallback") == "fallback"
+
+    value = {"mode": "local", "provider_id": "llm-default", "model": "qwen2.5-14b"}
+    assert database.set_setting("question_generation_source", value) == value
+    assert database.get_setting("question_generation_source") == value
+
+    updated = {**value, "model": "qwen2.5-32b"}
+    database.set_setting("question_generation_source", updated)
+    assert database.get_setting("question_generation_source") == updated

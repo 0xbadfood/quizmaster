@@ -7,7 +7,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from .imagestudio import ImageStudioClient
-from .vibevoice_audio import AudioTask, VibeVoiceChunkClient
+from .vibevoice_audio import AudioTask, VibeVoiceChunkClient, resolve_narrator_voice
 
 
 PROVIDER_TYPES = {
@@ -91,11 +91,12 @@ def probe_provider(provider: dict[str, Any], secret: str | None) -> dict[str, An
         }
     if provider_type == "vibevoice":
         settings = provider.get("settings", {})
-        reference_audio = Path(settings.get("reference_audio_path", "amit.wav"))
+        narrator = resolve_narrator_voice(settings)
+        reference_audio = Path(str(narrator.get("reference_audio_path") or "amit.wav"))
         client = VibeVoiceChunkClient(
             endpoint=base_url,
             reference_audio=reference_audio,
-            lang_key=str(settings.get("language", "en_indian")),
+            lang_key=str(narrator.get("language") or "en_indian"),
             cfg_scale=float(settings.get("cfg_scale", 1.3)),
             timeout_seconds=30,
         )
@@ -144,13 +145,14 @@ def run_provider_test(
         return {**probe, "model": model, "sample": str(content).strip()[:240]}
     if provider_type == "vibevoice":
         settings = provider.get("settings", {})
-        reference_audio = Path(settings.get("reference_audio_path", "amit.wav"))
+        narrator = resolve_narrator_voice(settings)
+        reference_audio = Path(str(narrator.get("reference_audio_path") or "amit.wav"))
         destination = artifact_root / provider["id"] / "connection-test.mp3"
         progress("Rendering voice sample", 0.42)
         client = VibeVoiceChunkClient(
             endpoint=base_url,
             reference_audio=reference_audio,
-            lang_key=str(settings.get("language", "en_indian")),
+            lang_key=str(narrator.get("language") or "en_indian"),
             cfg_scale=float(settings.get("cfg_scale", 1.3)),
             timeout_seconds=900,
         )

@@ -47,6 +47,10 @@ export function patch(path, body = {}) {
   return api(path, { method: 'PATCH', body: JSON.stringify(body) })
 }
 
+export function del(path) {
+  return api(path, { method: 'DELETE' })
+}
+
 export async function upload(path, file) {
   const response = await fetch(path, {
     method: 'POST',

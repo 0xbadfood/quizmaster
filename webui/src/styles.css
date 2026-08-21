@@ -483,9 +483,9 @@ h1, h2, h3, p { margin-top: 0; }
 .segmented-control.compact button { min-width: 82px; text-transform: capitalize; }
 .video-blocked { display: flex; align-items: flex-start; gap: 9px; margin-bottom: 12px; padding: 11px 12px; border-left: 3px solid var(--amber); color: #805316; background: var(--amber-soft); font-size: 10px; line-height: 1.45; }
 .video-table-shell { min-width: 820px; border: 1px solid var(--line); background: white; }
-.video-table-head, .video-row { display: grid; grid-template-columns: minmax(250px, 1.35fr) minmax(180px, 1fr) 90px 125px 95px 32px; align-items: center; gap: 12px; }
+.video-table-head, .video-row { display: grid; grid-template-columns: minmax(250px, 1.35fr) minmax(180px, 1fr) 90px 125px 95px 32px 32px; align-items: center; gap: 12px; }
 .video-table-head { min-height: 37px; padding: 0 13px; border-bottom: 1px solid var(--line); color: var(--faint); background: #f6f8f7; font-size: 8px; font-weight: 900; text-transform: uppercase; }
-.video-row { width: 100%; min-height: 68px; padding: 9px 13px; border-bottom: 1px solid #e8ecea; text-align: left; }
+.video-row { width: 100%; min-height: 68px; padding: 9px 13px; border-bottom: 1px solid #e8ecea; text-align: left; cursor: pointer; }
 .video-row:last-child { border-bottom: 0; }
 .video-row:hover { background: #f5f9f7; }
 .video-row > span { min-width: 0; }
@@ -503,6 +503,9 @@ h1, h2, h3, p { margin-top: 0; }
 .video-name .youtube-state.complete { color: var(--green); }
 .video-name .youtube-state.failed { color: var(--red); }
 .video-row-action { display: grid; place-items: center; color: var(--green); }
+.video-row-delete { display: grid; place-items: center; padding: 0; border: 0; color: var(--faint); background: transparent; cursor: pointer; }
+.video-row-delete:hover { color: var(--red); }
+.video-row-delete:disabled { opacity: 0.45; cursor: default; }
 .video-create-dialog { width: min(820px, 100%); }
 .video-create-dialog form { max-height: calc(100vh - 120px); gap: 14px; overflow-y: auto; }
 .video-orientation-options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }

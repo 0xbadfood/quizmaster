@@ -40,6 +40,7 @@ import {
   Sparkles,
   History,
   TestTube2,
+  Trash2,
   ThumbsUp,
   Upload,
   Volume2,
@@ -48,7 +49,7 @@ import {
   X,
   TvMinimalPlay as Youtube,
 } from 'lucide-react'
-import { api, patch, post, upload } from './api.js'
+import { api, del, patch, post, upload } from './api.js'
 
 const STAGES = [
   { id: 'overview', label: 'Overview', enabled: true },
@@ -409,6 +410,15 @@ function QuestionGenerateDialog({ category, providers, summary, onClose, onQueue
   const [form, setForm] = useState({ difficulty: defaultDifficulty, count: Math.max(1, Math.min(20, 120 - (summary?.[defaultDifficulty] || 0))), provider_id: llms[0]?.id || '', model: questionModel(llms[0]) })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  useEffect(() => {
+    let active = true
+    api('/api/admin/question-source').then((source) => {
+      if (!active) return
+      const preferred = llms.find((provider) => provider.id === source.provider_id)
+      if (preferred) setForm((current) => ({ ...current, provider_id: preferred.id, model: source.model || questionModel(preferred) }))
+    }).catch(() => {})
+    return () => { active = false }
+  }, [])
   async function submit(event) { event.preventDefault(); setBusy(true); setError(''); try { onQueued(await post(`/api/studio/categories/${category.slug}/questions/generate`, { ...form, count: Number(form.count) })) } catch (requestError) { setError(requestError.message); setBusy(false) } }
   function selectProvider(providerId) { const provider = llms.find((item) => item.id === providerId); setForm({ ...form, provider_id: providerId, model: questionModel(provider) }) }
   const selectedProvider = llms.find((provider) => provider.id === form.provider_id)
@@ -1052,6 +1062,16 @@ function VideoWorkspace({ category, providers, onStage, onJob, refreshToken }) {
   }
 
   useEffect(() => { loadVideos() }, [category?.slug, refreshToken])
+
+  async function deleteVideo(video) {
+    if (!window.confirm(`Delete "${video.title}"? This removes the rendered file and cannot be undone.`)) return
+    setError('')
+    try {
+      await del(`/api/studio/videos/${video.id}`)
+      await loadVideos()
+    } catch (requestError) { setError(requestError.message) }
+  }
+
   const allVideos = payload?.videos || []
   const videos = allVideos.filter((item) => orientation === 'all' || item.orientation === orientation)
   const completed = allVideos.filter((item) => item.status === 'complete')
@@ -1082,15 +1102,22 @@ function VideoWorkspace({ category, providers, onStage, onJob, refreshToken }) {
         {payload?.blocked_reason && <div className="video-blocked"><CircleAlert size={16} /><span>{payload.blocked_reason}</span></div>}
         {loading && [...Array(5)].map((_, index) => <div className="publish-skeleton" key={index} />)}
         {!loading && videos.length > 0 && <div className="video-table-shell">
-          <div className="video-table-head"><span>Video</span><span>Source sets</span><span>Runtime</span><span>Created</span><span>Status</span><span /></div>
-          {videos.map((video) => <button className="video-row" key={video.id} onClick={() => setDialog({ type: 'preview', video })}>
+          <div className="video-table-head"><span>Video</span><span>Source sets</span><span>Runtime</span><span>Created</span><span>Status</span><span /><span /></div>
+          {videos.map((video) => <div role="button" tabIndex="0" className="video-row" key={video.id} onClick={() => setDialog({ type: 'preview', video })} onKeyDown={(event) => event.key === 'Enter' && setDialog({ type: 'preview', video })}>
             <span className="video-primary"><span className={`video-format ${video.orientation}`}>{video.orientation === 'landscape' ? <Monitor size={18} /> : <Smartphone size={18} />}</span><span className="video-name"><strong>{video.title}</strong><small>{video.orientation} · {video.question_count} questions · bundle v{video.bundle_version}</small>{video.youtube_upload && <small className={`youtube-state ${video.youtube_upload.status}`}><Youtube size={10} />{video.youtube_upload.status === 'complete' ? 'Published on YouTube' : `YouTube ${video.youtube_upload.status}`}</small>}</span></span>
             <span><strong>{video.selections.map(videoSelectionLabel).join(', ')}</strong><small>{video.selections.length} set{video.selections.length === 1 ? '' : 's'}</small></span>
             <span><strong>{formatDuration(video.duration_seconds)}</strong><small>{video.file_bytes ? formatBytes(video.file_bytes) : 'Pending'}</small></span>
             <span><strong>{new Date(video.created_at).toLocaleDateString()}</strong><small>{new Date(video.created_at).toLocaleTimeString()}</small></span>
             <span><StatusBadge status={video.status} /></span>
             <span className="video-row-action">{video.status === 'complete' ? <Play size={15} /> : <ArrowRight size={15} />}</span>
-          </button>)}
+            <button
+              type="button"
+              className="video-row-delete"
+              title="Delete video"
+              disabled={['queued', 'rendering'].includes(video.status)}
+              onClick={(event) => { event.stopPropagation(); deleteVideo(video) }}
+            ><Trash2 size={15} /></button>
+          </div>)}
         </div>}
         {!loading && !videos.length && <EmptyState icon={Film} title="No videos in this view" detail="Create a video from one or more published quiz sets." />}
       </div>
@@ -1325,18 +1352,86 @@ function EmptyState({ icon: Icon, title, detail }) {
 function ProviderAdmin({ providers, selectedId, onSelect, onReload, onJob, onCreate }) {
   const selected = providers.find((item) => item.id === selectedId) || providers[0]
   const youtubeSelected = selectedId === 'youtube'
+  const questionSourceSelected = selectedId === 'question-source'
+  const pinnedSelected = youtubeSelected || questionSourceSelected
   return <main className="admin-layout">
     <aside className="provider-sidebar">
       <div className="sidebar-heading"><div><span>ADMINISTRATION</span><strong>Connections</strong></div><button className="icon-button quiet" title="Add provider connection" onClick={onCreate}><Plus size={17} /></button></div>
       <div className="provider-list">
-        {providers.map((provider) => <ProviderListItem provider={provider} selected={!youtubeSelected && provider.id === selected?.id} onClick={() => onSelect(provider.id)} key={provider.id} />)}
+        {providers.map((provider) => <ProviderListItem provider={provider} selected={!pinnedSelected && provider.id === selected?.id} onClick={() => onSelect(provider.id)} key={provider.id} />)}
+        <button className={`provider-item ${questionSourceSelected ? 'selected' : ''}`} onClick={() => onSelect('question-source')}><span className="provider-icon violet"><FileQuestion size={18} /></span><span><strong>Question bank source</strong><small>OpenAI or local model</small></span><span className="health-dot unchecked" /></button>
         <button className={`provider-item ${youtubeSelected ? 'selected' : ''}`} onClick={() => onSelect('youtube')}><span className="provider-icon youtube"><Youtube size={18} /></span><span><strong>YouTube publishing</strong><small>OAuth and uploads</small></span><span className="health-dot unchecked" /></button>
       </div>
       <div className="provider-legend"><KeyRound size={15} /><span>Secrets are encrypted at rest</span></div>
     </aside>
-    {youtubeSelected ? <YouTubeConnectionEditor /> : selected ? <ProviderEditor provider={selected} onSaved={onReload} onJob={onJob} /> : <EmptyState icon={Server} title="No provider connections" />}
-    {youtubeSelected ? <YouTubeConnectionDiagnostics /> : selected && <ProviderDiagnostics provider={selected} />}
+    {youtubeSelected ? <YouTubeConnectionEditor /> : questionSourceSelected ? <QuestionSourceEditor providers={providers} onSelectProvider={onSelect} /> : selected ? <ProviderEditor provider={selected} onSaved={onReload} onJob={onJob} /> : <EmptyState icon={Server} title="No provider connections" />}
+    {youtubeSelected ? <YouTubeConnectionDiagnostics /> : questionSourceSelected ? null : selected && <ProviderDiagnostics provider={selected} />}
   </main>
+}
+
+function QuestionSourceEditor({ providers, onSelectProvider }) {
+  const openaiProviders = providers.filter((item) => item.provider_type === 'openai_images' && item.enabled)
+  const localProviders = providers.filter((item) => item.provider_type === 'openai_compatible_llm' && item.enabled)
+  const [source, setSource] = useState(null)
+  const [form, setForm] = useState({ mode: 'openai', provider_id: '', model: '' })
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState('')
+
+  async function reload() {
+    setLoading(true)
+    try {
+      const result = await api('/api/admin/question-source')
+      setSource(result)
+      setForm({ mode: result.mode, provider_id: result.provider_id || '', model: result.model || '' })
+    } catch (error) { setNotice(error.message) } finally { setLoading(false) }
+  }
+  useEffect(() => { reload() }, [])
+
+  function chooseMode(mode) {
+    const pool = mode === 'local' ? localProviders : openaiProviders
+    const stillValid = pool.some((item) => item.id === form.provider_id)
+    const provider = stillValid ? pool.find((item) => item.id === form.provider_id) : pool[0]
+    setForm({ mode, provider_id: provider?.id || '', model: mode === 'local' ? (provider?.discovered_models?.[0] || '') : '' })
+  }
+
+  function chooseProvider(providerId) {
+    const provider = (form.mode === 'local' ? localProviders : openaiProviders).find((item) => item.id === providerId)
+    setForm({ ...form, provider_id: providerId, model: form.mode === 'local' ? (provider?.discovered_models?.[0] || '') : '' })
+  }
+
+  async function save(event) {
+    event.preventDefault(); setBusy(true); setNotice('')
+    try {
+      const result = await patch('/api/admin/question-source', { mode: form.mode, provider_id: form.provider_id, model: form.mode === 'local' ? form.model : null })
+      setSource(result); setNotice('Question bank source saved')
+    } catch (error) { setNotice(error.message) } finally { setBusy(false) }
+  }
+
+  const activeProvider = (form.mode === 'local' ? localProviders : openaiProviders).find((item) => item.id === form.provider_id)
+  const currentProviderName = providers.find((item) => item.id === source?.provider_id)?.name
+
+  return <section className="provider-editor">
+    <header className="editor-heading"><div className="provider-icon large violet"><FileQuestion size={22} /></div><div><p className="kicker">QUESTION BANK</p><h1>Question bank source</h1><p>Chooses which connection drafts new bank questions</p></div>{!loading && source && <StatusBadge status={source.mode === 'local' ? 'healthy' : 'unchecked'} label={source.mode === 'local' ? `Local · ${currentProviderName || source.provider_id}` : 'OpenAI API'} />}</header>
+    <form onSubmit={save} className="editor-form">
+      <div className="form-section"><div className="form-section-title"><span>Source</span><small>Automated pipeline runs and the Studio Generate action use this by default</small></div><div>
+        <div className="segmented-control compact" role="radiogroup" aria-label="Question bank source">
+          <button type="button" className={form.mode === 'openai' ? 'active' : ''} onClick={() => chooseMode('openai')}>OpenAI</button>
+          <button type="button" className={form.mode === 'local' ? 'active' : ''} onClick={() => chooseMode('local')}>Local model</button>
+        </div>
+      </div></div>
+      {form.mode === 'openai' ? <div className="form-section"><div className="form-section-title"><span>OpenAI connection</span><small>Uses that connection's own default and question model</small></div><div className="form-grid">
+        {openaiProviders.length ? <label className="span-2">OpenAI API connection<select required value={form.provider_id} onChange={(event) => chooseProvider(event.target.value)}>{openaiProviders.map((provider) => <option value={provider.id} key={provider.id}>{provider.name}</option>)}</select></label> : <div className="inline-error span-2"><CircleAlert size={15} />Configure an OpenAI API connection in Admin first.</div>}
+      </div></div> : <div className="form-section"><div className="form-section-title"><span>Local endpoint</span><small>An OpenAI-compatible connection, tested and detected here</small></div><div className="form-grid">
+        {localProviders.length ? <>
+          <label className="span-2">OpenAI-compatible connection<select required value={form.provider_id} onChange={(event) => chooseProvider(event.target.value)}>{localProviders.map((provider) => <option value={provider.id} key={provider.id}>{provider.name} · {provider.base_url}</option>)}</select></label>
+          {activeProvider?.discovered_models?.length ? <label className="span-2">Model<select required value={form.model} onChange={(event) => setForm({ ...form, model: event.target.value })}>{activeProvider.discovered_models.map((model) => <option value={model} key={model}>{model}</option>)}</select></label> : <div className="inline-error span-2"><CircleAlert size={15} />No models detected yet. <button type="button" className="button secondary" onClick={() => onSelectProvider(form.provider_id)}>Open connection to test and detect models</button></div>}
+        </> : <div className="inline-error span-2"><CircleAlert size={15} />Add and test an OpenAI-compatible LLM connection in Admin first.</div>}
+      </div></div>}
+      <div className="editor-actions"><button className="button primary" disabled={busy || !form.provider_id || (form.mode === 'local' && !form.model)}>{busy ? <LoaderCircle className="spin" size={16} /> : <Save size={16} />}Save changes</button></div>
+      {notice && <div className={notice.includes('saved') ? 'form-notice success' : 'form-notice'}>{notice}</div>}
+    </form>
+  </section>
 }
 
 function useYouTubeConnection() {
@@ -1438,6 +1533,8 @@ function ProviderEditor({ provider, onSaved, onJob }) {
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
   const [uploadingReference, setUploadingReference] = useState(false)
+  const [addingVoice, setAddingVoice] = useState(false)
+  const [newVoice, setNewVoice] = useState({ name: '', reference_transcript: '', language: 'en' })
   const [notice, setNotice] = useState('')
 
   useEffect(() => { setForm(providerForm(provider)); setNotice('') }, [provider])
@@ -1491,6 +1588,40 @@ function ProviderEditor({ provider, onSaved, onJob }) {
     }
   }
 
+  async function uploadVoice(event) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    if (!newVoice.name.trim() || !newVoice.reference_transcript.trim()) {
+      setNotice('Enter a name and reference transcript before uploading the voice sample')
+      event.target.value = ''
+      return
+    }
+    setAddingVoice(true)
+    setNotice('')
+    try {
+      const query = new URLSearchParams({
+        name: newVoice.name.trim(),
+        reference_transcript: newVoice.reference_transcript.trim(),
+        language: newVoice.language.trim() || 'en',
+      })
+      const result = await upload(`/api/admin/providers/${provider.id}/voices?${query}`, file)
+      setForm((current) => ({
+        ...current,
+        settings: {
+          ...current.settings,
+          voices: result.provider.settings.voices,
+          active_voice_id: result.provider.settings.active_voice_id,
+        },
+      }))
+      setNewVoice({ name: '', reference_transcript: '', language: 'en' })
+      await onSaved(provider.id)
+      setNotice(`Narrator voice "${result.voice.name}" added and set active`)
+    } catch (error) { setNotice(error.message) } finally {
+      setAddingVoice(false)
+      event.target.value = ''
+    }
+  }
+
   const meta = PROVIDER_META[provider.provider_type]
   const Icon = meta.icon
   return <section className="provider-editor">
@@ -1506,7 +1637,7 @@ function ProviderEditor({ provider, onSaved, onJob }) {
         {provider.provider_type === 'openai_images' && <label>Question model<input placeholder="gpt-5.6-luna" value={form.settings.question_model || ''} onChange={(event) => setting('question_model', event.target.value)} /></label>}
         <label className="toggle-field"><span>Connection enabled</span><button type="button" className={`toggle ${form.enabled ? 'on' : ''}`} onClick={() => change('enabled', !form.enabled)} aria-pressed={form.enabled}><span /></button></label>
       </div></div>
-      {provider.provider_type === 'vibevoice' && <VibeVoiceFields form={form} setting={setting} onUpload={uploadReference} uploading={uploadingReference} />}
+      {provider.provider_type === 'vibevoice' && <VibeVoiceFields form={form} setting={setting} onUpload={uploadReference} uploading={uploadingReference} newVoice={newVoice} setNewVoice={setNewVoice} onUploadVoice={uploadVoice} addingVoice={addingVoice} />}
       <div className="editor-actions"><button type="button" className="button secondary" onClick={test} disabled={testing || saving}>{testing ? <LoaderCircle className="spin" size={16} /> : <TestTube2 size={16} />}{provider.provider_type === 'vibevoice' ? 'Generate test clip' : 'Test connection'}</button><button className="button primary" disabled={saving}>{saving ? <LoaderCircle className="spin" size={16} /> : <Save size={16} />}Save changes</button></div>
       {notice && <div className={notice.includes('saved') || notice.includes('queued') ? 'form-notice success' : 'form-notice'}>{notice}</div>}
     </form>
@@ -1519,14 +1650,29 @@ function providerForm(provider) {
   return { name: provider.name, base_url: provider.base_url, api_key: '', default_model: provider.default_model || '', enabled: provider.enabled, settings }
 }
 
-function VibeVoiceFields({ form, setting, onUpload, uploading }) {
-  return <div className="form-section"><div className="form-section-title"><span>Narrator profile</span><small>Reference voice and rendering defaults</small></div><div className="form-grid">
-    <div className="span-2 provider-upload-field"><span>Reference audio</span><div><input value={form.settings.reference_audio_path || ''} onChange={(event) => setting('reference_audio_path', event.target.value)} spellCheck="false" /><label className="button secondary upload-button">{uploading ? <LoaderCircle className="spin" size={14} /> : <Upload size={14} />}Upload WAV<input type="file" accept="audio/wav,.wav" disabled={uploading} onChange={onUpload} /></label></div></div>
-    <label className="span-2">Reference transcript<textarea rows="4" value={form.settings.reference_transcript || ''} onChange={(event) => setting('reference_transcript', event.target.value)} /></label>
-    <label>Language<input value={form.settings.language || 'en_indian'} onChange={(event) => setting('language', event.target.value)} /></label>
-    <label>CFG scale<input type="number" min="0.1" max="5" step="0.1" value={form.settings.cfg_scale || 1.3} onChange={(event) => setting('cfg_scale', Number(event.target.value))} /></label>
+function VibeVoiceFields({ form, setting, onUpload, uploading, newVoice, setNewVoice, onUploadVoice, addingVoice }) {
+  const voices = form.settings.voices || []
+  const activeVoice = voices.find((item) => item.id === form.settings.active_voice_id) || voices[0]
+  return <><div className="form-section"><div className="form-section-title"><span>Narrator profile</span><small>Reference voice and rendering defaults</small></div><div className="form-grid">
+    {voices.length > 0 ? <>
+      <label className="span-2">Narrator voice<select value={activeVoice?.id || ''} onChange={(event) => setting('active_voice_id', event.target.value)}>{voices.map((voice) => <option value={voice.id} key={voice.id}>{voice.name}</option>)}</select></label>
+      <label className="span-2">Reference transcript<textarea rows="3" readOnly value={activeVoice?.reference_transcript || ''} /></label>
+      <label>Language<input readOnly value={activeVoice?.language || ''} /></label>
+      <label>CFG scale<input type="number" min="0.1" max="5" step="0.1" value={form.settings.cfg_scale || 1.3} onChange={(event) => setting('cfg_scale', Number(event.target.value))} /></label>
+    </> : <>
+      <div className="span-2 provider-upload-field"><span>Reference audio</span><div><input value={form.settings.reference_audio_path || ''} onChange={(event) => setting('reference_audio_path', event.target.value)} spellCheck="false" /><label className="button secondary upload-button">{uploading ? <LoaderCircle className="spin" size={14} /> : <Upload size={14} />}Upload WAV<input type="file" accept="audio/wav,.wav" disabled={uploading} onChange={onUpload} /></label></div></div>
+      <label className="span-2">Reference transcript<textarea rows="4" value={form.settings.reference_transcript || ''} onChange={(event) => setting('reference_transcript', event.target.value)} /></label>
+      <label>Language<input value={form.settings.language || 'en_indian'} onChange={(event) => setting('language', event.target.value)} /></label>
+      <label>CFG scale<input type="number" min="0.1" max="5" step="0.1" value={form.settings.cfg_scale || 1.3} onChange={(event) => setting('cfg_scale', Number(event.target.value))} /></label>
+    </>}
     <label className="span-2">Test phrase<textarea rows="3" value={form.settings.test_phrase || ''} onChange={(event) => setting('test_phrase', event.target.value)} /></label>
   </div></div>
+  <div className="form-section"><div className="form-section-title"><span>Add narrator voice</span><small>Uploads a new reference WAV alongside any existing ones and makes it active</small></div><div className="form-grid">
+    <label>Voice name<input placeholder="Quizmaster Speaker 1" value={newVoice.name} onChange={(event) => setNewVoice({ ...newVoice, name: event.target.value })} /></label>
+    <label>Language<input placeholder="en" value={newVoice.language} onChange={(event) => setNewVoice({ ...newVoice, language: event.target.value })} /></label>
+    <label className="span-2">Reference transcript<textarea rows="3" placeholder="The exact words spoken in the uploaded WAV" value={newVoice.reference_transcript} onChange={(event) => setNewVoice({ ...newVoice, reference_transcript: event.target.value })} /></label>
+    <div className="span-2 provider-upload-field"><span>Reference audio</span><div><label className="button secondary upload-button">{addingVoice ? <LoaderCircle className="spin" size={14} /> : <Upload size={14} />}Upload WAV<input type="file" accept="audio/wav,.wav" disabled={addingVoice} onChange={onUploadVoice} /></label></div></div>
+  </div></div></>
 }
 
 function ProviderDiagnostics({ provider }) {

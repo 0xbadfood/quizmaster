@@ -31,6 +31,7 @@ from .production_pipeline import (
     load_pipeline_metadata,
     run_category_pipeline,
 )
+from .studio_questions import resolve_question_provider_default
 from .service import PlanGenerationError, generate_plan
 
 
@@ -189,8 +190,14 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path(os.getenv("QUIZ_SECRET_KEY_FILE", "data/.provider_secret_key")),
     )
-    production.add_argument("--question-provider", default="openai-images")
-    production.add_argument("--question-model", default="gpt-5.6-luna")
+    production.add_argument(
+        "--question-provider",
+        help="defaults to the Admin-configured question bank source",
+    )
+    production.add_argument(
+        "--question-model",
+        help="defaults to the Admin-configured question bank source",
+    )
     production.add_argument("--qwen-provider", default="llm-default")
     production.add_argument("--qwen-model")
     production.add_argument("--background-provider", default="openai-images")
@@ -559,6 +566,11 @@ def _run_question_audit(args: argparse.Namespace) -> int:
 def _run_category_pipeline(args: argparse.Namespace) -> int:
     try:
         metadata = load_pipeline_metadata(args.metadata)
+        database = QuizDatabase(args.database)
+        database.migrate()
+        default_question_provider, default_question_model = (
+            resolve_question_provider_default(database)
+        )
         result = run_category_pipeline(
             CategoryPipelineConfig(
                 metadata=metadata,
@@ -567,8 +579,8 @@ def _run_category_pipeline(args: argparse.Namespace) -> int:
                 source_root=args.source_root,
                 bundle_root=args.bundle_root,
                 secret_key_file=args.secret_key_file,
-                question_provider_id=args.question_provider,
-                question_model=args.question_model,
+                question_provider_id=args.question_provider or default_question_provider,
+                question_model=args.question_model or default_question_model,
                 qwen_provider_id=args.qwen_provider,
                 qwen_model=args.qwen_model,
                 background_provider_id=args.background_provider,

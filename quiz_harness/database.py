@@ -291,6 +291,16 @@ MIGRATIONS: list[tuple[int, str]] = [
         CREATE INDEX idx_youtube_uploads_job ON youtube_uploads(job_id);
         """,
     ),
+    (
+        8,
+        """
+        CREATE TABLE app_settings (
+            key TEXT PRIMARY KEY,
+            value_json TEXT NOT NULL CHECK (json_valid(value_json)),
+            updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        );
+        """,
+    ),
 ]
 
 
@@ -1206,6 +1216,29 @@ class QuizDatabase:
             )
         return self.provider_connection(provider_id)
 
+    def get_setting(self, key: str, default: Any = None) -> Any:
+        self.migrate()
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT value_json FROM app_settings WHERE key = ?", (key,)
+            ).fetchone()
+        return json.loads(row["value_json"]) if row is not None else default
+
+    def set_setting(self, key: str, value: Any) -> Any:
+        self.migrate()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO app_settings(key, value_json, updated_at)
+                VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                ON CONFLICT(key) DO UPDATE SET
+                    value_json = excluded.value_json,
+                    updated_at = excluded.updated_at
+                """,
+                (key, json.dumps(value, ensure_ascii=True)),
+            )
+        return value
+
     def mark_interrupted_jobs(
         self, updated_at: str, *, kinds: set[str] | None = None
     ) -> int:
@@ -1457,6 +1490,14 @@ class QuizDatabase:
                 (category_slug, limit),
             ).fetchall()
         return [self.studio_video(row["id"]) for row in rows]
+
+    def delete_studio_video(self, video_id: str) -> dict[str, Any]:
+        record = self.studio_video(video_id)
+        with self.connect() as connection:
+            connection.execute(
+                "DELETE FROM studio_videos WHERE id = ?", (video_id,)
+            )
+        return record
 
     def mark_interrupted_videos(self, updated_at: str) -> int:
         self.migrate()

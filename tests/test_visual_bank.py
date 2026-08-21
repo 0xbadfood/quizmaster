@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import pytest
+from pydantic import ValidationError
+
 from quiz_harness.openai_bank import bank_prompt
 from quiz_harness.visual_bank import (
     GeneratedVisualBank,
@@ -101,6 +104,27 @@ def test_allocator_creates_ten_sets_and_keeps_twenty_reserves() -> None:
             for choice_id in ("choice1", "choice2", "choice3", "choice4")
         ]
         assert sorted(positions) == [2, 2, 3, 3]
+
+
+def _large_bank_document(count: int) -> VisualBankDocument:
+    return VisualBankDocument.model_validate(
+        {
+            "schema_version": "visual_bank_v1",
+            "category": "Animals",
+            "difficulty": "beginner",
+            "source_provider": "openai",
+            "source_model": "gpt-5.6-luna",
+            "source_response_id": "response_test",
+            "generated_at_utc": "2026-08-05T00:00:00Z",
+            "questions": [question(index) for index in range(1, count + 1)],
+        }
+    )
+
+
+def test_stored_bank_document_allows_five_hundred_questions_but_not_more() -> None:
+    assert len(_large_bank_document(500).questions) == 500
+    with pytest.raises(ValidationError):
+        _large_bank_document(501)
 
 
 def test_ingestion_canonicalizes_repeated_model_topic_keys() -> None:

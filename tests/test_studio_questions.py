@@ -14,6 +14,9 @@ from quiz_harness.studio_questions import (
     QuestionBankStore,
     generate_questions,
     question_generation_prompt,
+    question_source_setting,
+    resolve_question_provider_default,
+    set_question_source_setting,
     slugify,
 )
 
@@ -194,6 +197,36 @@ def test_import_rejects_values_outside_runtime_bank_contract(tmp_path: Path) -> 
     assert "2-50" in result["rejections"][0]["reasons"][0]
 
 
+def _bulk_candidates(start: int, count: int) -> list[dict]:
+    return [
+        {
+            "question": f"Which animal demonstrates bulk feature number {index}?",
+            "choices": [
+                {"label": f"Bulk Animal {index} {choice}", "object_key": f"bulk_animal_{index}_{choice}"}
+                for choice in range(1, 5)
+            ],
+            "correct_choice_id": "choice1",
+            "explanation": f"Bulk Animal {index} 1 demonstrates bulk feature number {index}.",
+        }
+        for index in range(start, start + count)
+    ]
+
+
+def test_import_allows_growth_up_to_five_hundred_questions_per_difficulty(
+    tmp_path: Path,
+) -> None:
+    bank, database = store(tmp_path)
+    category = database.studio_category("animals")
+
+    result = bank.import_questions(category, "beginner", _bulk_candidates(1, 498))
+    assert result["accepted"] == 498
+    document = json.loads(bank.bank_path("animals", "beginner").read_text())
+    assert len(document["questions"]) == 500
+
+    with pytest.raises(QuestionBankError, match="cannot exceed 500"):
+        bank.import_questions(category, "beginner", _bulk_candidates(499, 1))
+
+
 def test_quarantine_removes_only_unallocated_contract_invalid_records(
     tmp_path: Path,
 ) -> None:
@@ -300,3 +333,166 @@ def test_openai_provider_uses_responses_api_with_typed_output(
     assert questions[0]["choices"][0]["object_key"] == "duck"
     assert calls[0]["text_format"] is GeneratedStudioBatch
     assert calls[0]["reasoning"] == {"effort": "low"}
+
+
+def test_local_provider_uses_openai_compatible_chat_completions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict] = []
+
+    class FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "questions": [
+                                        {
+                                            "question": "Which planet is closest to the Sun?",
+                                            "choices": [
+                                                {"label": "Mercury", "object_key": "mercury"},
+                                                {"label": "Venus", "object_key": "venus"},
+                                                {"label": "Earth", "object_key": "earth"},
+                                                {"label": "Mars", "object_key": "mars"},
+                                            ],
+                                            "correct_choice_id": "choice1",
+                                            "explanation": (
+                                                "Mercury orbits closest to the Sun of all"
+                                                " the planets."
+                                            ),
+                                        }
+                                    ]
+                                }
+                            )
+                        }
+                    }
+                ]
+            }
+
+    class FakeHttpxClient:
+        def __init__(self, **kwargs: object) -> None:
+            calls.append({"init": kwargs})
+
+        def __enter__(self) -> "FakeHttpxClient":
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            return None
+
+        def post(self, url: str, *, json: dict) -> FakeResponse:
+            calls.append({"url": url, "json": json})
+            return FakeResponse()
+
+    monkeypatch.setattr(
+        "quiz_harness.studio_questions.httpx.Client", FakeHttpxClient
+    )
+    questions, model = generate_questions(
+        category={
+            "name": "Space",
+            "description": "Space facts",
+            "editorial_brief": "Astronomy for kids.",
+            "age_min": 5,
+            "age_max": 8,
+        },
+        sibling_names=[],
+        difficulty="beginner",
+        count=1,
+        provider={
+            "provider_type": "openai_compatible_llm",
+            "base_url": "http://10.8.0.5:8001/v1",
+            "default_model": "qwen2.5-14b",
+        },
+        secret=None,
+        progress=lambda *_: None,
+    )
+    assert model == "qwen2.5-14b"
+    assert questions[0]["choices"][0]["object_key"] == "mercury"
+    post_call = next(item for item in calls if "url" in item)
+    assert post_call["url"] == "http://10.8.0.5:8001/v1/chat/completions"
+    assert post_call["json"]["model"] == "qwen2.5-14b"
+    assert post_call["json"]["response_format"] == {"type": "json_object"}
+
+
+def test_question_source_setting_defaults_to_openai(tmp_path: Path) -> None:
+    database = QuizDatabase(tmp_path / "quiz.db")
+    assert question_source_setting(database) == {
+        "mode": "openai",
+        "provider_id": "openai-images",
+        "model": None,
+    }
+    assert resolve_question_provider_default(database) == (
+        "openai-images",
+        "gpt-5.6-luna",
+    )
+
+
+def test_set_question_source_setting_requires_matching_provider_type(
+    tmp_path: Path,
+) -> None:
+    database = QuizDatabase(tmp_path / "quiz.db")
+    database.create_provider_connection(
+        {
+            "id": "llm-default",
+            "provider_type": "openai_compatible_llm",
+            "name": "Qwen",
+            "base_url": "http://10.8.0.5:8001/v1",
+        }
+    )
+    database.create_provider_connection(
+        {
+            "id": "openai-images",
+            "provider_type": "openai_images",
+            "name": "OpenAI Images",
+            "base_url": "https://api.openai.com/v1",
+        }
+    )
+    with pytest.raises(QuestionBankError, match="local mode requires"):
+        set_question_source_setting(
+            database, mode="local", provider_id="openai-images", model="qwen2.5-14b"
+        )
+    with pytest.raises(QuestionBankError, match="openai mode requires"):
+        set_question_source_setting(
+            database, mode="openai", provider_id="llm-default", model=None
+        )
+    with pytest.raises(QuestionBankError, match="choose a model"):
+        set_question_source_setting(
+            database, mode="local", provider_id="llm-default", model=None
+        )
+    with pytest.raises(QuestionBankError, match="does not exist"):
+        set_question_source_setting(
+            database, mode="local", provider_id="missing", model="qwen2.5-14b"
+        )
+
+
+def test_set_question_source_setting_persists_local_selection(
+    tmp_path: Path,
+) -> None:
+    database = QuizDatabase(tmp_path / "quiz.db")
+    database.create_provider_connection(
+        {
+            "id": "llm-default",
+            "provider_type": "openai_compatible_llm",
+            "name": "Qwen",
+            "base_url": "http://10.8.0.5:8001/v1",
+        }
+    )
+    result = set_question_source_setting(
+        database, mode="local", provider_id="llm-default", model="qwen2.5-14b"
+    )
+    assert result == {
+        "mode": "local",
+        "provider_id": "llm-default",
+        "model": "qwen2.5-14b",
+    }
+    assert question_source_setting(database) == result
+    assert resolve_question_provider_default(database) == (
+        "llm-default",
+        "qwen2.5-14b",
+    )

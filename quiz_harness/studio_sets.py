@@ -15,6 +15,7 @@ from .visual_bank import VisualQuizSet, load_bank, write_model
 
 DIFFICULTIES = ("beginner", "intermediate")
 SET_REVIEW_STATUSES = ("unreviewed", "approved", "needs_edit", "rejected")
+MAX_SETS_PER_DIFFICULTY = 20
 
 
 class QuizSetError(ValueError):
@@ -136,8 +137,8 @@ class QuizSetStore:
             "sets": sets,
             "summary": {
                 "total": len(documents),
-                "recommended_target": 20,
-                "maximum_per_difficulty": 10,
+                "recommended_target": MAX_SETS_PER_DIFFICULTY * len(DIFFICULTIES),
+                "maximum_per_difficulty": MAX_SETS_PER_DIFFICULTY,
                 "beginner": counts["beginner"],
                 "intermediate": counts["intermediate"],
                 "approved": review_counts["approved"],
@@ -146,7 +147,8 @@ class QuizSetStore:
                 "rejected": review_counts["rejected"],
                 "banks": banks,
                 "selection_slots": {
-                    name: max(0, 10 - counts[name]) for name in DIFFICULTIES
+                    name: max(0, MAX_SETS_PER_DIFFICULTY - counts[name])
+                    for name in DIFFICULTIES
                 },
                 "validation_issues": validation_issues,
             },
@@ -232,7 +234,7 @@ class QuizSetStore:
         bank = load_bank(bank_path)
         existing, _ = self._load_sets(category_slug)
         difficulty_sets = [item for item in existing if item.difficulty == difficulty]
-        remaining = max(0, 10 - len(difficulty_sets))
+        remaining = max(0, MAX_SETS_PER_DIFFICULTY - len(difficulty_sets))
         available = sum(question.state == "available" for question in bank.questions)
         capacity = max(0, (available - 5) // 10)
         allowed = min(remaining, capacity)
@@ -243,10 +245,15 @@ class QuizSetStore:
             )
         used_numbers = {_set_number(item.set_id) for item in difficulty_sets}
         first_number = next(
-            number for number in range(1, 11) if number not in used_numbers
+            number
+            for number in range(1, MAX_SETS_PER_DIFFICULTY + 1)
+            if number not in used_numbers
         )
         expected_numbers = list(range(first_number, first_number + count))
-        if any(number in used_numbers or number > 10 for number in expected_numbers):
+        if any(
+            number in used_numbers or number > MAX_SETS_PER_DIFFICULTY
+            for number in expected_numbers
+        ):
             raise QuizSetError("existing set numbering has a gap that prevents safe append")
 
         def selection_progress(message: str) -> None:

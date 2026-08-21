@@ -26,9 +26,66 @@ QUESTION_GENERATION_PROVIDER_TYPES = {
 }
 BANK_WRITE_LOCK = threading.Lock()
 
+QUESTION_SOURCE_SETTING_KEY = "question_generation_source"
+QUESTION_SOURCE_MODES = {"openai", "local"}
+DEFAULT_QUESTION_PROVIDER_ID = "openai-images"
+DEFAULT_QUESTION_MODEL = "gpt-5.6-luna"
+QUESTION_SOURCE_PROVIDER_TYPES = {
+    "openai": "openai_images",
+    "local": "openai_compatible_llm",
+}
+
 
 class QuestionBankError(ValueError):
     """Raised when a Studio question-bank operation is invalid."""
+
+
+def question_source_setting(database: QuizDatabase) -> dict[str, Any]:
+    stored = database.get_setting(QUESTION_SOURCE_SETTING_KEY)
+    if not isinstance(stored, dict) or "mode" not in stored:
+        return {
+            "mode": "openai",
+            "provider_id": DEFAULT_QUESTION_PROVIDER_ID,
+            "model": None,
+        }
+    return {
+        "mode": stored.get("mode"),
+        "provider_id": stored.get("provider_id"),
+        "model": stored.get("model"),
+    }
+
+
+def set_question_source_setting(
+    database: QuizDatabase, *, mode: str, provider_id: str, model: str | None
+) -> dict[str, Any]:
+    if mode not in QUESTION_SOURCE_MODES:
+        raise QuestionBankError("mode must be 'openai' or 'local'")
+    try:
+        provider = database.provider_connection(provider_id)
+    except KeyError as exc:
+        raise QuestionBankError(f"provider does not exist: {provider_id}") from exc
+    expected_type = QUESTION_SOURCE_PROVIDER_TYPES[mode]
+    if provider["provider_type"] != expected_type:
+        raise QuestionBankError(
+            f"{mode} mode requires a provider of type {expected_type}"
+        )
+    if not provider["enabled"]:
+        raise QuestionBankError(f"provider is disabled: {provider_id}")
+    model = model.strip() if isinstance(model, str) else model
+    if mode == "local" and not model:
+        raise QuestionBankError("choose a model for the local provider")
+    value = {"mode": mode, "provider_id": provider_id, "model": model or None}
+    database.set_setting(QUESTION_SOURCE_SETTING_KEY, value)
+    return value
+
+
+def resolve_question_provider_default(database: QuizDatabase) -> tuple[str, str | None]:
+    setting = question_source_setting(database)
+    provider_id = str(setting.get("provider_id") or DEFAULT_QUESTION_PROVIDER_ID)
+    model = setting.get("model")
+    if setting.get("mode") != "local" and not model:
+        model = DEFAULT_QUESTION_MODEL
+    return provider_id, model
 
 
 class GeneratedStudioChoice(StrictModel):
@@ -630,8 +687,8 @@ class QuestionBankStore:
                 used_ids.add(question_id)
                 existing_text.add(normalized)
                 accepted.append(item)
-            if len(existing_questions) > 150:
-                raise QuestionBankError("A difficulty bank cannot exceed 150 questions.")
+            if len(existing_questions) > 500:
+                raise QuestionBankError("A difficulty bank cannot exceed 500 questions.")
             if accepted:
                 self._write(path, document)
         for item in accepted:

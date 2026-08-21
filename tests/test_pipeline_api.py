@@ -3,13 +3,29 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 from quiz_harness.pipeline_api import (
     PipelineBusyError,
     PipelineLock,
+    PipelineSettings,
     PipelineStartRequest,
     _authorized,
     create_app,
 )
+
+
+def test_target_questions_ceiling_allows_five_hundred_but_not_more() -> None:
+    assert PipelineSettings(target_questions=500).target_questions == 500
+    with pytest.raises(ValidationError):
+        PipelineSettings(target_questions=501)
+
+
+def test_sets_per_difficulty_ceiling_allows_twenty_but_not_more() -> None:
+    assert PipelineSettings(sets_per_difficulty=20).sets_per_difficulty == 20
+    with pytest.raises(ValidationError):
+        PipelineSettings(sets_per_difficulty=21)
 
 
 def _app(tmp_path: Path):
