@@ -22,7 +22,7 @@ from fastapi import Cookie, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from .assets import generate_assets
 from .background_images import (
@@ -410,11 +410,22 @@ class LandscapeBackgroundGenerationRequest(BaseModel):
     planner_model: str | None = Field(default=None, min_length=2, max_length=200)
     image_provider_id: str = Field(min_length=2, max_length=100)
     image_model: str | None = Field(default=None, min_length=2, max_length=200)
+    banner_text: str | None = Field(default=None, min_length=1, max_length=80)
     quality: str = Field(default="medium", pattern="^(low|medium|high|auto)$")
     guidance: str = Field(default="", max_length=2000)
     seed: int = Field(default=20260805, ge=0, le=2_147_483_647)
     refresh_plan: bool = False
     force: bool = False
+
+    @field_validator("banner_text")
+    @classmethod
+    def normalize_banner_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = " ".join(value.split())
+        if not normalized:
+            raise ValueError("banner text cannot be blank")
+        return normalized
 
 
 class AudioGenerationRequest(BaseModel):
@@ -1169,6 +1180,46 @@ async def upload_category_background(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+@app.post(
+    "/api/studio/categories/{category_slug}/visuals/portrait-video-background/upload"
+)
+async def upload_portrait_video_background(
+    category_slug: str, request: Request
+) -> dict[str, Any]:
+    try:
+        category = database.studio_category(category_slug)
+        _require_category_metadata(category)
+        return studio_visuals.upload_video_background_portrait(
+            category,
+            await request.body(),
+            request.headers.get("content-type", "application/octet-stream"),
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Category not found") from exc
+    except (OSError, ValueError, StudioVisualError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post(
+    "/api/studio/categories/{category_slug}/visuals/landscape-background/upload"
+)
+async def upload_landscape_video_background(
+    category_slug: str, request: Request
+) -> dict[str, Any]:
+    try:
+        category = database.studio_category(category_slug)
+        _require_category_metadata(category)
+        return studio_visuals.upload_video_background_landscape(
+            category,
+            await request.body(),
+            request.headers.get("content-type", "application/octet-stream"),
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Category not found") from exc
+    except (OSError, ValueError, StudioVisualError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 def _start_video_background_generation(
     category_slug: str,
     payload: LandscapeBackgroundGenerationRequest,
@@ -1203,6 +1254,7 @@ def _start_video_background_generation(
             status_code=404, detail="Category or provider not found"
         ) from exc
     _require_category_metadata(category)
+    banner_text = payload.banner_text or category["display_title"]
     if planner["provider_type"] != "openai_compatible_llm" or not planner["enabled"]:
         raise HTTPException(
             status_code=422,
@@ -1254,7 +1306,7 @@ def _start_video_background_generation(
         )
         planned = plan_quiz_background_prompt(
             category=category["name"],
-            display_title=category["display_title"],
+            display_title=banner_text,
             subtitle="",
             provider_id=planner["id"],
             database_path=DATABASE_PATH,
@@ -1282,7 +1334,7 @@ def _start_video_background_generation(
         )
         generated = generate_quiz_background(
             category=category["name"],
-            display_title=category["display_title"],
+            display_title=banner_text,
             provider_id=image_provider["id"],
             database_path=DATABASE_PATH,
             secret_key_file=SECRET_KEY_FILE,
@@ -1332,6 +1384,7 @@ def _start_video_background_generation(
             "quality": payload.quality,
             "seed": payload.seed,
             "layout": layout,
+            "banner_text": banner_text,
         },
     )
 

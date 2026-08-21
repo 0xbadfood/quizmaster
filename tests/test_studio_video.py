@@ -29,6 +29,16 @@ def published_category(
             "questions_file": f"quizzes/geography_beginner_{index:02d}.json",
         }
         for index in range(1, set_count + 1)
+    ] + [
+        {
+            "quiz_id": f"geography_intermediate_{index:02d}",
+            "number": index,
+            "difficulty": "intermediate",
+            "title": f"Intermediate Geography Quiz {index}",
+            "question_count": 10,
+            "questions_file": f"quizzes/geography_intermediate_{index:02d}.json",
+        }
+        for index in range(1, set_count + 1)
     ]
     quiz_root = content / "quizzes"
     quiz_root.mkdir()
@@ -75,6 +85,30 @@ def test_landscape_selection_accepts_up_to_five_sets(tmp_path: Path) -> None:
     )
     assert result["question_count"] == 50
     assert result["bundle_version"] == 3
+
+
+def test_landscape_selection_orders_beginner_before_intermediate(
+    tmp_path: Path,
+) -> None:
+    store = published_category(tmp_path)
+
+    result = store.resolve_selection(
+        category_slug="geography",
+        orientation="landscape",
+        set_ids=[
+            "geography_intermediate_02",
+            "geography_beginner_02",
+            "geography_intermediate_01",
+            "geography_beginner_01",
+        ],
+    )
+
+    assert [item["set_id"] for item in result["selected"]] == [
+        "geography_beginner_01",
+        "geography_beginner_02",
+        "geography_intermediate_01",
+        "geography_intermediate_02",
+    ]
 
 
 def test_landscape_selection_rejects_more_than_fifty_questions(tmp_path: Path) -> None:

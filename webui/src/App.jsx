@@ -68,6 +68,22 @@ const PROVIDER_META = {
   vibevoice: { label: 'VibeVoice Chunk API', icon: AudioLines, tone: 'green' },
 }
 
+function imageDimensions(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const image = new window.Image()
+    image.onload = () => {
+      resolve({ width: image.naturalWidth, height: image.naturalHeight })
+      URL.revokeObjectURL(url)
+    }
+    image.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('The selected file is not a readable image.'))
+    }
+    image.src = url
+  })
+}
+
 function LoginPage({ onLogin }) {
   const [username, setUsername] = useState('admin')
   const [password, setPassword] = useState('')
@@ -657,8 +673,8 @@ function VisualsWorkspace({ category, providers, onStage, onJob, refreshToken, o
     </section>
     <VisualInspector category={category} asset={selected} providers={providers} onChanged={async () => { await loadVisuals(selectedId); await onCategoryRefresh() }} onJob={onJob} onGenerate={() => { setChecked(selected ? [selected.asset_id] : []); setDialog('generate') }} />
     {dialog === 'plan' && <VisualPromptDialog category={category} providers={providers} current={payload?.prompt_plan} onClose={() => setDialog('')} onQueued={(job) => { setDialog(''); onJob(job) }} />}
-    {dialog === 'portrait-video' && <VideoBackgroundDialog layout="portrait" category={category} providers={providers} asset={assets.find((item) => item.role === 'video_background_portrait')} onClose={() => setDialog('')} onQueued={(job) => { setDialog(''); onJob(job) }} />}
-    {dialog === 'landscape' && <VideoBackgroundDialog layout="landscape" category={category} providers={providers} asset={assets.find((item) => item.role === 'video_background_landscape')} onClose={() => setDialog('')} onQueued={(job) => { setDialog(''); onJob(job) }} />}
+    {dialog === 'portrait-video' && <VideoBackgroundDialog layout="portrait" category={category} providers={providers} asset={assets.find((item) => item.role === 'video_background_portrait')} onClose={() => setDialog('')} onUploaded={async () => { setDialog(''); await loadVisuals(`${category.slug}_video_background_portrait`); await onCategoryRefresh() }} onQueued={(job) => { setDialog(''); onJob(job) }} />}
+    {dialog === 'landscape' && <VideoBackgroundDialog layout="landscape" category={category} providers={providers} asset={assets.find((item) => item.role === 'video_background_landscape')} onClose={() => setDialog('')} onUploaded={async () => { setDialog(''); await loadVisuals(`${category.slug}_video_background_landscape`); await onCategoryRefresh() }} onQueued={(job) => { setDialog(''); onJob(job) }} />}
     {dialog === 'generate' && <VisualGenerateDialog category={category} providers={providers} assets={selectedAssets} onClose={() => setDialog('')} onQueued={(job) => { setDialog(''); setChecked([]); onJob(job) }} />}
   </div>
 }
@@ -687,10 +703,13 @@ function VisualInspector({ category, asset, onChanged, onGenerate }) {
   </aside>
 }
 
-function VideoBackgroundDialog({ layout, category, providers, asset, onClose, onQueued }) {
+function VideoBackgroundDialog({ layout, category, providers, asset, onClose, onUploaded, onQueued }) {
   const portrait = layout === 'portrait'
   const endpoint = portrait ? 'portrait-video-background' : 'landscape-background'
+  const uploadEndpoint = `${endpoint}/upload`
   const inputPrefix = portrait ? 'portrait-video' : 'landscape'
+  const requiredWidth = portrait ? 1080 : 1920
+  const requiredHeight = portrait ? 1920 : 1080
   const planners = providers.filter((provider) => provider.enabled && provider.provider_type === 'openai_compatible_llm')
   const imageProviders = providers.filter((provider) => provider.enabled && ['openai_images', 'imagestudio'].includes(provider.provider_type))
   const planner = planners[0]
@@ -700,6 +719,7 @@ function VideoBackgroundDialog({ layout, category, providers, asset, onClose, on
     planner_model: planner?.default_model || planner?.discovered_models?.[0] || '',
     image_provider_id: imageProvider?.id || '',
     image_model: imageProvider?.default_model || imageProvider?.discovered_models?.[0] || '',
+    banner_text: category.display_title || `${category.name} Quiz`,
     quality: 'medium',
     guidance: '',
     seed: 20260805,
@@ -716,14 +736,35 @@ function VideoBackgroundDialog({ layout, category, providers, asset, onClose, on
     event.preventDefault(); setBusy(true); setError('')
     try { onQueued(await post(`/api/studio/categories/${category.slug}/visuals/${endpoint}`, { ...form, seed: Number(form.seed) })) } catch (requestError) { setError(requestError.message); setBusy(false) }
   }
+  async function uploaded(event) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    setBusy(true); setError('')
+    try {
+      const detected = await imageDimensions(file)
+      if (detected.width !== requiredWidth || detected.height !== requiredHeight) {
+        throw new Error(`Expected exactly ${requiredWidth}x${requiredHeight} pixels; selected image is ${detected.width}x${detected.height} pixels.`)
+      }
+      await upload(`/api/studio/categories/${category.slug}/visuals/${uploadEndpoint}`, file)
+      await onUploaded()
+    } catch (uploadError) {
+      setError(uploadError.message)
+      setBusy(false)
+    } finally {
+      event.target.value = ''
+    }
+  }
   return <div className="dialog-backdrop"><section className="dialog visual-dialog" role="dialog" aria-modal="true"><header><div><p className="kicker">VIDEO BACKGROUND</p><h2>{asset?.image_url ? `Regenerate ${layout} video background` : `Generate ${layout} video background`}</h2></div><button className="icon-button quiet" title="Close" onClick={onClose}><X size={18} /></button></header><form onSubmit={submit}>
+    <div className="video-background-upload"><div><strong>Upload approved image</strong><span>Exact resolution required: {requiredWidth} x {requiredHeight} pixels</span></div><label className={`button secondary upload-button ${busy ? 'disabled' : ''}`}><Upload size={15} />Choose image<input disabled={busy} type="file" accept="image/*" onChange={uploaded} /></label></div>
+    <div className="dialog-divider"><span>OR GENERATE</span></div>
+    <label>Banner text<input required maxLength="80" value={form.banner_text} onChange={(event) => setForm({ ...form, banner_text: event.target.value })} /><small className="field-help">Rendered exactly as entered; this does not change the category name.</small></label>
     <div className="dialog-grid"><label>Planner connection<select value={form.planner_provider_id} onChange={(event) => choosePlanner(event.target.value)}><option value="" disabled>Select a planner</option>{planners.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label>Planner model<input list={`${inputPrefix}-planner-models`} value={form.planner_model} onChange={(event) => setForm({ ...form, planner_model: event.target.value })} /><datalist id={`${inputPrefix}-planner-models`}>{selectedPlanner?.discovered_models.map((model) => <option value={model} key={model} />)}</datalist></label></div>
     <div className="dialog-grid"><label>Image provider<select value={form.image_provider_id} onChange={(event) => chooseImageProvider(event.target.value)}><option value="" disabled>Select an image provider</option>{imageProviders.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label>Image model<input list={`${inputPrefix}-image-models`} value={form.image_model} onChange={(event) => setForm({ ...form, image_model: event.target.value })} /><datalist id={`${inputPrefix}-image-models`}>{selectedImageProvider?.discovered_models.map((model) => <option value={model} key={model} />)}</datalist></label></div>
     {selectedImageProvider?.provider_type === 'openai_images' && <label>Quality<select value={form.quality} onChange={(event) => setForm({ ...form, quality: event.target.value })}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="auto">Auto</option></select></label>}
     <label>Additional direction<textarea rows="4" placeholder="Optional category-specific art direction" value={form.guidance} onChange={(event) => setForm({ ...form, guidance: event.target.value })} /></label>
     <div className="dialog-grid"><label>Seed<input type="number" min="0" max="2147483647" value={form.seed} onChange={(event) => setForm({ ...form, seed: event.target.value })} /></label><div className="dialog-checks"><label className="check-field"><input type="checkbox" checked={form.refresh_plan} onChange={(event) => setForm({ ...form, refresh_plan: event.target.checked })} />Create a new prompt plan</label><label className="check-field"><input type="checkbox" checked={form.force} onChange={(event) => setForm({ ...form, force: event.target.checked })} />Render a new image</label></div></div>
     {error && <div className="inline-error"><CircleAlert size={15} />{error}</div>}
-    <div className="dialog-actions"><button type="button" className="button secondary" onClick={onClose}>Cancel</button><button className="button primary" disabled={busy || !form.planner_model || !form.image_model}>{busy ? <LoaderCircle className="spin" size={15} /> : <Image size={15} />}Start generation</button></div>
+    <div className="dialog-actions"><button type="button" className="button secondary" onClick={onClose}>Cancel</button><button className="button primary" disabled={busy || !form.banner_text.trim() || !form.planner_model || !form.image_model}>{busy ? <LoaderCircle className="spin" size={15} /> : <Image size={15} />}Start generation</button></div>
   </form></section></div>
 }
 

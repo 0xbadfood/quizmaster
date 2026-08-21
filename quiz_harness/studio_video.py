@@ -110,6 +110,14 @@ class StudioVideoStore:
             source_sets = [by_id[set_id] for set_id in set_ids]
         except KeyError as exc:
             raise StudioVideoError(f"quiz set is not published: {exc.args[0]}") from exc
+        difficulty_rank = {"beginner": 0, "intermediate": 1}
+        source_sets.sort(
+            key=lambda item: (
+                difficulty_rank.get(str(item["difficulty"]), len(difficulty_rank)),
+                int(item["number"]),
+                str(item["set_id"]),
+            )
+        )
         question_count = sum(item["question_count"] for item in source_sets)
         maximum = 10 if orientation == "portrait" else 50
         if not source_sets:

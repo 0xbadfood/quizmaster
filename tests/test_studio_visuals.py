@@ -130,6 +130,73 @@ def test_background_upload_is_normalized_and_approved(tmp_path: Path) -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("method_name", "expected_size", "output_name"),
+    [
+        (
+            "upload_video_background_portrait",
+            (1080, 1920),
+            "video_background_portrait.png",
+        ),
+        (
+            "upload_video_background_landscape",
+            (1920, 1080),
+            "video_background_landscape.png",
+        ),
+    ],
+)
+def test_video_background_upload_requires_exact_dimensions(
+    tmp_path: Path,
+    method_name: str,
+    expected_size: tuple[int, int],
+    output_name: str,
+) -> None:
+    store, category, category_root = visual_fixture(tmp_path)
+    invalid = io.BytesIO()
+    Image.new("RGB", (800, 800), "navy").save(invalid, format="PNG")
+
+    with pytest.raises(
+        studio_visuals_module.StudioVisualError,
+        match=rf"must be exactly {expected_size[0]}x{expected_size[1]} pixels",
+    ):
+        getattr(store, method_name)(category, invalid.getvalue(), "image/png")
+
+    assert not (category_root / "assets/category" / output_name).exists()
+
+
+@pytest.mark.parametrize(
+    ("method_name", "expected_size", "output_name"),
+    [
+        (
+            "upload_video_background_portrait",
+            (1080, 1920),
+            "video_background_portrait.png",
+        ),
+        (
+            "upload_video_background_landscape",
+            (1920, 1080),
+            "video_background_landscape.png",
+        ),
+    ],
+)
+def test_video_background_upload_accepts_exact_dimensions(
+    tmp_path: Path,
+    method_name: str,
+    expected_size: tuple[int, int],
+    output_name: str,
+) -> None:
+    store, category, category_root = visual_fixture(tmp_path)
+    source = io.BytesIO()
+    Image.new("RGB", expected_size, "navy").save(source, format="JPEG")
+
+    result = getattr(store, method_name)(category, source.getvalue(), "image/jpeg")
+
+    assert result["status"] == "approved"
+    assert (result["width"], result["height"]) == expected_size
+    with Image.open(category_root / "assets/category" / output_name) as image:
+        assert image.size == expected_size
+
+
 def test_inventory_migrates_legacy_animal_tile_fallback(tmp_path: Path) -> None:
     store, category, category_root = visual_fixture(tmp_path)
     store.prepare(category)

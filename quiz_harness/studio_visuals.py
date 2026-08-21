@@ -708,14 +708,22 @@ class StudioVisualStore:
         self, category: dict[str, Any], data: bytes, content_type: str
     ) -> dict[str, Any]:
         return self._upload_background_role(
-            category, data, content_type, role="video_background_landscape"
+            category,
+            data,
+            content_type,
+            role="video_background_landscape",
+            require_exact_dimensions=True,
         )
 
     def upload_video_background_portrait(
         self, category: dict[str, Any], data: bytes, content_type: str
     ) -> dict[str, Any]:
         return self._upload_background_role(
-            category, data, content_type, role="video_background_portrait"
+            category,
+            data,
+            content_type,
+            role="video_background_portrait",
+            require_exact_dimensions=True,
         )
 
     def _upload_background_role(
@@ -725,6 +733,7 @@ class StudioVisualStore:
         content_type: str,
         *,
         role: str,
+        require_exact_dimensions: bool = False,
     ) -> dict[str, Any]:
         if not data:
             raise StudioVisualError("uploaded background is empty")
@@ -736,9 +745,17 @@ class StudioVisualStore:
         try:
             with Image.open(io.BytesIO(data)) as source:
                 source.load()
+                source = ImageOps.exif_transpose(source)
+                expected_size = (spec.output_width, spec.output_height)
+                if require_exact_dimensions and source.size != expected_size:
+                    raise StudioVisualError(
+                        f"{role.replace('_', ' ')} must be exactly "
+                        f"{expected_size[0]}x{expected_size[1]} pixels; "
+                        f"uploaded image is {source.width}x{source.height} pixels"
+                    )
                 normalized = ImageOps.fit(
                     source.convert("RGB"),
-                    (spec.output_width, spec.output_height),
+                    expected_size,
                     method=Image.Resampling.LANCZOS,
                 )
         except (OSError, UnidentifiedImageError) as exc:
@@ -753,7 +770,12 @@ class StudioVisualStore:
                 manifest_path=root / "category-image-manifest.json",
                 manifest_name=document.name,
             )
-        return {"asset_id": spec.asset_id, "status": "approved"}
+        return {
+            "asset_id": spec.asset_id,
+            "status": "approved",
+            "width": spec.output_width,
+            "height": spec.output_height,
+        }
 
     def generate_images(
         self,
