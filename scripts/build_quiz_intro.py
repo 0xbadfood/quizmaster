@@ -11,10 +11,12 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = ROOT / "video_renderer/assets/quiz-intro-landscape.mp4"
 
 
-def discover_intro_sources(root: Path, output: Path) -> list[Path]:
+def discover_clip_sources(
+    root: Path, output: Path, patterns: tuple[str, ...]
+) -> list[Path]:
     candidates = {
         path.resolve()
-        for pattern in ("quiz_intro_*.mp4", "quiz_into_*.mp4")
+        for pattern in patterns
         for path in root.glob(pattern)
         if path.is_file() and path.resolve() != output.resolve()
     }
@@ -25,14 +27,13 @@ def discover_intro_sources(root: Path, output: Path) -> list[Path]:
     return sorted(candidates, key=source_order)
 
 
-def build_landscape_intro(
-    *, source_root: Path, output: Path, crf: int = 18
-) -> Path:
-    sources = discover_intro_sources(source_root, output)
+def discover_intro_sources(root: Path, output: Path) -> list[Path]:
+    return discover_clip_sources(root, output, ("quiz_intro_*.mp4", "quiz_into_*.mp4"))
+
+
+def concatenate_clips(sources: list[Path], output: Path, *, crf: int = 18) -> Path:
     if not sources:
-        raise ValueError(
-            f"no quiz_intro_*.mp4 or quiz_into_*.mp4 clips found in {source_root}"
-        )
+        raise ValueError("no clips were provided to concatenate")
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_suffix(".tmp.mp4")
     command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
@@ -84,6 +85,17 @@ def build_landscape_intro(
     finally:
         temporary.unlink(missing_ok=True)
     return output
+
+
+def build_landscape_intro(
+    *, source_root: Path, output: Path, crf: int = 18
+) -> Path:
+    sources = discover_intro_sources(source_root, output)
+    if not sources:
+        raise ValueError(
+            f"no quiz_intro_*.mp4 or quiz_into_*.mp4 clips found in {source_root}"
+        )
+    return concatenate_clips(sources, output, crf=crf)
 
 
 def main() -> None:

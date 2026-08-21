@@ -38,6 +38,8 @@ export type QuizVideoData = {
   timerAudio: string;
   introVideo?: string;
   introVideoSeconds?: number;
+  outroVideo?: string;
+  outroVideoSeconds?: number;
   presentation: VideoPresentationAssets;
   totalQuestions: number;
   questions: VideoQuestion[];

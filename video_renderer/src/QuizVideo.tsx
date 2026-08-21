@@ -19,6 +19,7 @@ import {
   QUESTION_LEAD_FRAMES,
   TRANSITION_FRAMES,
   introVideoFrames,
+  outroVideoFrames,
   questionTiming,
 } from "./timing";
 import { fitText } from "./textFit";
@@ -42,6 +43,27 @@ const colors = {
 };
 
 const badgeAccents = ["#8047c7", "#53a63b", "#f27a18", "#2686df"];
+// presentation.badges is generated in this fixed order: purple, green, orange, blue.
+// Index 1 (green) is reserved for the correct-answer reveal, so it is excluded here
+// to avoid implying any answer choice is correct before the reveal.
+const NON_CORRECT_BADGE_INDEXES = [0, 2, 3];
+
+const ANSWER_POP_STAGGER_FRAMES = 6;
+const ANSWER_POP_AUDIO = "quiz/hard-pop-click.wav";
+
+const ANSWER_FRAME_WINDOW = {
+  left: "18.4%",
+  right: "18.4%",
+  top: "7.8%",
+  bottom: "22%",
+} as const;
+
+const ANSWER_FRAME_LEDGE = {
+  left: "18.4%",
+  right: "18.4%",
+  top: "81%",
+  bottom: "6.3%",
+} as const;
 
 const Background: React.FC<{ source: string; dim?: number }> = ({
   source,
@@ -177,54 +199,67 @@ const CheckMark: React.FC = () => (
 
 const ChoiceCard: React.FC<{
   choice: QuizChoice;
-}> = ({ choice }) => {
+  frameAsset: string;
+  index: number;
+  revealDelay: number;
+}> = ({ choice, frameAsset, index, revealDelay }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const delay = revealDelay + index * ANSWER_POP_STAGGER_FRAMES;
+  const pop = spring({
+    frame: Math.max(0, frame - delay),
+    fps,
+    config: { damping: 13, stiffness: 170, mass: 0.7 },
+  });
   const labelFit = fitText({
     text: choice.label,
-    maxWidth: 405,
-    maxHeight: 62,
-    maxFontSize: 40,
-    minFontSize: 28,
+    maxWidth: 260,
+    maxHeight: 50,
+    maxFontSize: 34,
+    minFontSize: 22,
     maxLines: 2,
-    lineHeight: 1.05,
+    lineHeight: 1.08,
     fontFamily: '"DejaVu Sans"',
     fontWeight: 900,
   });
   return (
     <div
       style={{
-        height: 354,
-        borderRadius: 8,
-        overflow: "hidden",
-        backgroundColor: colors.paper,
-        border: "4px solid rgba(255,255,255,0.94)",
-        boxShadow: "0 12px 28px rgba(0,0,0,0.4)",
+        position: "relative",
+        width: 440,
+        height: 475,
+        opacity: pop,
+        transform: `scale(${0.55 + pop * 0.45}) translateY(${(1 - pop) * 26}px)`,
+        filter: "drop-shadow(0 14px 18px rgba(4,16,32,0.45))",
       }}
     >
+      <Img
+        src={staticFile(frameAsset)}
+        style={{ position: "absolute", width: "100%", height: "100%" }}
+      />
       <div
         style={{
-          height: 282,
+          position: "absolute",
+          ...ANSWER_FRAME_WINDOW,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
           overflow: "hidden",
-          backgroundColor: colors.white,
         }}
       >
         <Img
           src={staticFile(choice.image)}
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "contain",
-            transform: "scale(1.2)",
-          }}
+          style={{ width: "88%", height: "88%", objectFit: "contain" }}
         />
       </div>
       <div
         style={{
-          height: 72,
+          position: "absolute",
+          ...ANSWER_FRAME_LEDGE,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          padding: "0 14px 4px",
-          backgroundColor: colors.paper,
+          padding: "0 10px",
           color: colors.ink,
           fontSize: labelFit.fontSize,
           lineHeight: labelFit.lineHeight,
@@ -235,6 +270,9 @@ const ChoiceCard: React.FC<{
       >
         {choice.label}
       </div>
+      <Sequence from={delay} layout="none">
+        <Html5Audio src={staticFile(ANSWER_POP_AUDIO)} volume={0.55} />
+      </Sequence>
     </div>
   );
 };
@@ -608,6 +646,7 @@ const QuestionScene: React.FC<{
   const { fps, width, height } = useVideoConfig();
   const landscape = width > height;
   const timing = questionTiming(question, fps);
+  const answerRevealStart = QUESTION_LEAD_FRAMES + timing.questionAudioFrames;
   const entrance = spring({
     frame,
     fps,
@@ -648,12 +687,12 @@ const QuestionScene: React.FC<{
   });
   const portraitQuestionFit = fitText({
     text: question.question,
-    maxWidth: 700,
-    maxHeight: 500,
-    maxFontSize: 68,
-    minFontSize: 36,
-    maxLines: 7,
-    lineHeight: 1.12,
+    maxWidth: 600,
+    maxHeight: 320,
+    maxFontSize: 62,
+    minFontSize: 34,
+    maxLines: 8,
+    lineHeight: 1.14,
     fontFamily: '"DejaVu Sans"',
     fontWeight: 900,
   });
@@ -738,9 +777,10 @@ const QuestionScene: React.FC<{
             }}
           >
             {question.choices.map((choice, choiceIndex) => {
-              const badgeIndex =
+              const poolIndex =
                 (question.questionNumber + choiceIndex) %
-                presentation.badges.length;
+                NON_CORRECT_BADGE_INDEXES.length;
+              const badgeIndex = NON_CORRECT_BADGE_INDEXES[poolIndex];
               return (
                 <LandscapeChoiceCard
                   key={choice.choiceId}
@@ -770,61 +810,93 @@ const QuestionScene: React.FC<{
           <div
             style={{
               position: "absolute",
-              top: 400,
-              left: 64,
-              right: 64,
-              height: 650,
-              backgroundColor: "rgba(247,251,255,0.96)",
-              borderTop: `10px solid ${colors.yellow}`,
-              borderBottom: `10px solid ${colors.orange}`,
-              boxShadow: "0 18px 38px rgba(0,0,0,0.42)",
-              display: "flex",
-              alignItems: "center",
-              padding: "46px 38px 46px 52px",
-              gap: 34,
+              top: 440,
+              left: 40,
+              right: 40,
+              height: 400,
               opacity: 1 - revealProgress,
               transform: `translateY(${revealProgress * 30}px)`,
             }}
           >
+            <Img
+              src={staticFile(presentation.questionFrame)}
+              style={{ position: "absolute", width: "100%", height: "100%" }}
+            />
             <div
               style={{
-                flex: 1,
+                position: "absolute",
+                left: "18%",
+                right: "18%",
+                top: "4.4%",
+                bottom: "3.8%",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                color: colors.ink,
-                fontSize: portraitQuestionFit.fontSize,
-                lineHeight: portraitQuestionFit.lineHeight,
-                fontWeight: 900,
-                textAlign: "center",
-                letterSpacing: 0,
+                padding: "0 18px",
               }}
             >
-              {question.question}
+              <div
+                style={{
+                  color: colors.ink,
+                  fontSize: portraitQuestionFit.fontSize,
+                  lineHeight: portraitQuestionFit.lineHeight,
+                  fontWeight: 900,
+                  textAlign: "center",
+                  letterSpacing: 0,
+                }}
+              >
+                {question.question}
+              </div>
             </div>
-            <Timer
-              localFrame={frame}
-              countdownStart={timing.countdownStart}
-              revealStart={timing.revealStart}
-              fps={fps}
-            />
+            <div
+              style={{
+                position: "absolute",
+                top: -32,
+                right: -16,
+                transform: "scale(0.82)",
+                transformOrigin: "top right",
+              }}
+            >
+              <Timer
+                localFrame={frame}
+                countdownStart={timing.countdownStart}
+                revealStart={timing.revealStart}
+                fps={fps}
+              />
+            </div>
           </div>
           <div
             style={{
               position: "absolute",
-              bottom: 42,
-              left: 70,
-              right: 70,
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 22,
+              top: 874,
+              bottom: 36,
+              left: 40,
+              right: 40,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
               opacity: 1 - revealProgress,
               transform: `translateY(${revealProgress * 45}px)`,
             }}
           >
-            {question.choices.map((choice) => (
-              <ChoiceCard key={choice.choiceId} choice={choice} />
-            ))}
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                justifyContent: "center",
+                gap: 28,
+              }}
+            >
+              {question.choices.map((choice, choiceIndex) => (
+                <ChoiceCard
+                  key={choice.choiceId}
+                  choice={choice}
+                  frameAsset={presentation.answerFrame}
+                  index={choiceIndex}
+                  revealDelay={answerRevealStart}
+                />
+              ))}
+            </div>
           </div>
           {frame >= timing.revealStart ? (
             <AnswerOverlay
@@ -870,6 +942,7 @@ const FullBackground: React.FC<{ source: string; fadeIn?: boolean }> = ({
 
 export const QuizVideo: React.FC<{ data: QuizVideoData }> = ({ data }) => {
   const landscapeIntroFrames = introVideoFrames(data);
+  const landscapeOutroFrames = outroVideoFrames(data);
   let cursor = landscapeIntroFrames + INTRO_FRAMES;
   const sequences: React.ReactNode[] = [];
 
@@ -925,6 +998,14 @@ export const QuizVideo: React.FC<{ data: QuizVideoData }> = ({ data }) => {
         <FullBackground source={data.background} fadeIn={false} />
       </Sequence>
       {sequences}
+      {data.outroVideo && landscapeOutroFrames > 0 ? (
+        <Sequence from={cursor} durationInFrames={landscapeOutroFrames}>
+          <OffthreadVideo
+            src={staticFile(data.outroVideo)}
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
+        </Sequence>
+      ) : null}
     </AbsoluteFill>
   );
 };

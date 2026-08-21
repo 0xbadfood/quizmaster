@@ -18,6 +18,11 @@ export const introVideoFrames = (data: QuizVideoData) =>
     ? secondsToFrames(data.introVideoSeconds, data.fps)
     : 0;
 
+export const outroVideoFrames = (data: QuizVideoData) =>
+  data.outroVideo && data.outroVideoSeconds
+    ? secondsToFrames(data.outroVideoSeconds, data.fps)
+    : 0;
+
 export const questionTiming = (question: VideoQuestion, fps: number) => {
   const questionAudioFrames = secondsToFrames(
     question.questionAudioSeconds,
@@ -56,4 +61,5 @@ export const totalDurationInFrames = (data: QuizVideoData) =>
         ? FINAL_BACKGROUND_FRAMES
         : TRANSITION_FRAMES),
     0,
-  );
+  ) +
+  outroVideoFrames(data);

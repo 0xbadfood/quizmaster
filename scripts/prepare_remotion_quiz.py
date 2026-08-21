@@ -15,6 +15,7 @@ RENDERER_ROOT = ROOT / "video_renderer"
 STUDIO_ROOT = ROOT / "visual_quiz_qwen"
 GLOBAL_VIDEO_ROOT = STUDIO_ROOT / "global/assets/video"
 LANDSCAPE_INTRO_SOURCE = RENDERER_ROOT / "assets/quiz-intro-landscape.mp4"
+LANDSCAPE_OUTRO_SOURCE = RENDERER_ROOT / "assets/quiz-outro-landscape.mp4"
 ORIENTATION_SIZE = {
     "portrait": (1080, 1920),
     "landscape": (1920, 1080),
@@ -199,6 +200,11 @@ def prepare_sets(
             "landscape intro is missing; run "
             "'python3 scripts/build_quiz_intro.py' first"
         )
+    if orientation == "landscape" and not LANDSCAPE_OUTRO_SOURCE.is_file():
+        raise ValueError(
+            "landscape outro is missing; run "
+            "'python3 scripts/build_quiz_outro.py' first"
+        )
     if not selections:
         raise ValueError("select at least one quiz set")
     selection_keys = [(difficulty, number) for difficulty, number, _ in selections]
@@ -257,6 +263,10 @@ def prepare_sets(
     _copy(
         RENDERER_ROOT / "assets/timer-five-seconds.mp3",
         "quiz/timer-five-seconds.mp3",
+    )
+    _copy(
+        RENDERER_ROOT / "assets/hard-pop-click.wav",
+        "quiz/hard-pop-click.wav",
     )
     presentation_assets = _copy_presentation_assets(
         content=content, category_document=category_document
@@ -350,6 +360,10 @@ def prepare_sets(
             LANDSCAPE_INTRO_SOURCE, "quiz/intro-landscape.mp4"
         )
         generated["introVideoSeconds"] = _media_duration(LANDSCAPE_INTRO_SOURCE)
+        generated["outroVideo"] = _copy(
+            LANDSCAPE_OUTRO_SOURCE, "quiz/outro-landscape.mp4"
+        )
+        generated["outroVideoSeconds"] = _media_duration(LANDSCAPE_OUTRO_SOURCE)
     output = RENDERER_ROOT / "src/generated-quiz.json"
     output.write_text(
         json.dumps(generated, indent=2, ensure_ascii=True) + "\n",

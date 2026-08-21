@@ -1,11 +1,11 @@
 {
   "schemaVersion": "quiz_video_input_v1",
-  "category": "Geography",
-  "title": "GEOGRAPHY QUIZ 1",
+  "category": "Flags",
+  "title": "FLAGS QUIZ 1",
   "difficulty": "Beginner",
-  "quizId": "geography_beginner_001",
-  "width": 1080,
-  "height": 1920,
+  "quizId": "flags_beginner_001",
+  "width": 1920,
+  "height": 1080,
   "fps": 30,
   "background": "quiz/background.png",
   "timerAudio": "quiz/timer-five-seconds.mp3",
@@ -21,337 +21,44 @@
       "quiz/ui/video_badge_blue.webp"
     ]
   },
-  "totalQuestions": 10,
+  "totalQuestions": 1,
   "questions": [
     {
-      "questionId": "geography_beginner_099",
+      "questionId": "flags_beginner_078",
       "questionNumber": 1,
-      "question": "Which planet is the third planet from the Sun and the only known world to support living life?",
-      "explanation": "Earth is our home planet, featuring liquid water oceans and a breathable atmosphere.",
+      "question": "Which island nation in the Caribbean has a trident symbol on its blue and gold flag?",
+      "explanation": "Barbados features a black trident head on its flag to symbolize independence.",
       "correctChoiceId": "choice1",
-      "questionAudio": "quiz/audio/geography_beginner_099-question.mp3",
-      "explanationAudio": "quiz/audio/geography_beginner_099-explanation.mp3",
-      "questionAudioSeconds": 7.8667,
-      "explanationAudioSeconds": 7.2,
-      "choices": [
-        {
-          "choiceId": "choice1",
-          "label": "Earth",
-          "image": "quiz/answers/earth.webp"
-        },
-        {
-          "choiceId": "choice2",
-          "label": "Venus",
-          "image": "quiz/answers/venus.webp"
-        },
-        {
-          "choiceId": "choice3",
-          "label": "Jupiter",
-          "image": "quiz/answers/jupiter.webp"
-        },
-        {
-          "choiceId": "choice4",
-          "label": "Mars",
-          "image": "quiz/answers/mars.webp"
-        }
-      ]
-    },
-    {
-      "questionId": "geography_beginner_063",
-      "questionNumber": 2,
-      "question": "Which cold ocean completely circles the icy continent of Antarctica at the bottom of Earth?",
-      "explanation": "The Southern Ocean (Antarctic Ocean) surrounds Antarctica with freezing water.",
-      "correctChoiceId": "choice3",
-      "questionAudio": "quiz/audio/geography_beginner_063-question.mp3",
-      "explanationAudio": "quiz/audio/geography_beginner_063-explanation.mp3",
-      "questionAudioSeconds": 7.0667,
-      "explanationAudioSeconds": 7.0667,
-      "choices": [
-        {
-          "choiceId": "choice1",
-          "label": "Pacific Ocean",
-          "image": "quiz/answers/pacific_ocean.webp"
-        },
-        {
-          "choiceId": "choice2",
-          "label": "Arctic Ocean",
-          "image": "quiz/answers/arctic_ocean.webp"
-        },
-        {
-          "choiceId": "choice3",
-          "label": "Southern Ocean",
-          "image": "quiz/answers/southern_ocean.webp"
-        },
-        {
-          "choiceId": "choice4",
-          "label": "Indian Ocean",
-          "image": "quiz/answers/indian_ocean.webp"
-        }
-      ]
-    },
-    {
-      "questionId": "geography_beginner_052",
-      "questionNumber": 3,
-      "question": "Which continent is located at the frozen bottom of the Earth and surrounded by the Southern Ocean?",
-      "explanation": "Antarctica is the coldest, driest, and most southern continent on Earth.",
-      "correctChoiceId": "choice2",
-      "questionAudio": "quiz/audio/geography_beginner_052-question.mp3",
-      "explanationAudio": "quiz/audio/geography_beginner_052-explanation.mp3",
-      "questionAudioSeconds": 6.6667,
-      "explanationAudioSeconds": 6.1333,
-      "choices": [
-        {
-          "choiceId": "choice1",
-          "label": "Europe",
-          "image": "quiz/answers/europe.webp"
-        },
-        {
-          "choiceId": "choice2",
-          "label": "Antarctica",
-          "image": "quiz/answers/antarctica.webp"
-        },
-        {
-          "choiceId": "choice3",
-          "label": "Australia",
-          "image": "quiz/answers/australia.webp"
-        },
-        {
-          "choiceId": "choice4",
-          "label": "Asia",
-          "image": "quiz/answers/asia.webp"
-        }
-      ]
-    },
-    {
-      "questionId": "geography_beginner_058",
-      "questionNumber": 4,
-      "question": "Which continent contains historic nations like France, Germany, Italy, and Spain?",
-      "explanation": "Europe is a western continent connected directly to Asia on the same landmass.",
-      "correctChoiceId": "choice4",
-      "questionAudio": "quiz/audio/geography_beginner_058-question.mp3",
-      "explanationAudio": "quiz/audio/geography_beginner_058-explanation.mp3",
-      "questionAudioSeconds": 5.8667,
+      "questionAudio": "quiz/audio/flags_beginner_078-question.mp3",
+      "explanationAudio": "quiz/audio/flags_beginner_078-explanation.mp3",
+      "questionAudioSeconds": 6.8,
       "explanationAudioSeconds": 5.8667,
       "choices": [
         {
           "choiceId": "choice1",
-          "label": "Africa",
-          "image": "quiz/answers/africa.webp"
+          "label": "Barbados",
+          "image": "quiz/answers/barbados.webp"
         },
         {
           "choiceId": "choice2",
-          "label": "North America",
-          "image": "quiz/answers/north_america.webp"
+          "label": "Bahamas",
+          "image": "quiz/answers/bahamas.webp"
         },
         {
           "choiceId": "choice3",
-          "label": "Asia",
-          "image": "quiz/answers/asia.webp"
+          "label": "Trinidad and Tobago",
+          "image": "quiz/answers/trinidad_and_tobago.webp"
         },
         {
           "choiceId": "choice4",
-          "label": "Europe",
-          "image": "quiz/answers/europe.webp"
-        }
-      ]
-    },
-    {
-      "questionId": "geography_beginner_009",
-      "questionNumber": 5,
-      "question": "Which slow-moving mass or river of ice is formed by the accumulation and compaction of snow on mountains?",
-      "explanation": "A glacier is a huge mass of ice moving slowly down a slope or valley.",
-      "correctChoiceId": "choice1",
-      "questionAudio": "quiz/audio/geography_beginner_009-question.mp3",
-      "explanationAudio": "quiz/audio/geography_beginner_009-explanation.mp3",
-      "questionAudioSeconds": 8.4,
-      "explanationAudioSeconds": 6.4,
-      "choices": [
-        {
-          "choiceId": "choice1",
-          "label": "Glacier",
-          "image": "quiz/answers/glacier.webp"
-        },
-        {
-          "choiceId": "choice2",
-          "label": "Isthmus",
-          "image": "quiz/answers/isthmus.webp"
-        },
-        {
-          "choiceId": "choice3",
-          "label": "Volcano",
-          "image": "quiz/answers/volcano.webp"
-        },
-        {
-          "choiceId": "choice4",
-          "label": "Iceberg",
-          "image": "quiz/answers/iceberg.webp"
-        }
-      ]
-    },
-    {
-      "questionId": "geography_beginner_025",
-      "questionNumber": 6,
-      "question": "Which fan-shaped landform is created at the mouth of a river where sediment and soil are deposited?",
-      "explanation": "A river delta is a triangular area of wetland created where rivers deposit mud and soil.",
-      "correctChoiceId": "choice2",
-      "questionAudio": "quiz/audio/geography_beginner_025-question.mp3",
-      "explanationAudio": "quiz/audio/geography_beginner_025-explanation.mp3",
-      "questionAudioSeconds": 7.8667,
-      "explanationAudioSeconds": 7.0667,
-      "choices": [
-        {
-          "choiceId": "choice1",
-          "label": "Plateau",
-          "image": "quiz/answers/plateau.webp"
-        },
-        {
-          "choiceId": "choice2",
-          "label": "Delta",
-          "image": "quiz/answers/delta.webp"
-        },
-        {
-          "choiceId": "choice3",
-          "label": "Valley",
-          "image": "quiz/answers/valley.webp"
-        },
-        {
-          "choiceId": "choice4",
-          "label": "Oasis",
-          "image": "quiz/answers/oasis.webp"
-        }
-      ]
-    },
-    {
-      "questionId": "geography_beginner_027",
-      "questionNumber": 7,
-      "question": "Which man-made waterway is built to allow boats and ships to travel inland or connect oceans?",
-      "explanation": "A canal is an artificial channel constructed for navigation, irrigation, or drainage.",
-      "correctChoiceId": "choice4",
-      "questionAudio": "quiz/audio/geography_beginner_027-question.mp3",
-      "explanationAudio": "quiz/audio/geography_beginner_027-explanation.mp3",
-      "questionAudioSeconds": 7.8667,
-      "explanationAudioSeconds": 6.8,
-      "choices": [
-        {
-          "choiceId": "choice1",
-          "label": "Fjord",
-          "image": "quiz/answers/fjord.webp"
-        },
-        {
-          "choiceId": "choice2",
-          "label": "Strait",
-          "image": "quiz/answers/strait.webp"
-        },
-        {
-          "choiceId": "choice3",
-          "label": "River",
-          "image": "quiz/answers/river.webp"
-        },
-        {
-          "choiceId": "choice4",
-          "label": "Canal",
-          "image": "quiz/answers/canal.webp"
-        }
-      ]
-    },
-    {
-      "questionId": "geography_beginner_038",
-      "questionNumber": 8,
-      "question": "Which geological formation consists of flat-topped, steep-sided isolated hills, smaller than a plateau?",
-      "explanation": "A mesa is an isolated flat-topped hill with steep sides, common in arid landscapes.",
-      "correctChoiceId": "choice2",
-      "questionAudio": "quiz/audio/geography_beginner_038-question.mp3",
-      "explanationAudio": "quiz/audio/geography_beginner_038-explanation.mp3",
-      "questionAudioSeconds": 8.5333,
-      "explanationAudioSeconds": 7.3333,
-      "choices": [
-        {
-          "choiceId": "choice1",
-          "label": "Valley",
-          "image": "quiz/answers/valley.webp"
-        },
-        {
-          "choiceId": "choice2",
-          "label": "Mesa",
-          "image": "quiz/answers/mesa.webp"
-        },
-        {
-          "choiceId": "choice3",
-          "label": "Mountain",
-          "image": "quiz/answers/mountain.webp"
-        },
-        {
-          "choiceId": "choice4",
-          "label": "Island",
-          "image": "quiz/answers/island.webp"
-        }
-      ]
-    },
-    {
-      "questionId": "geography_beginner_129",
-      "questionNumber": 9,
-      "question": "Which tool measures air temperature to tell if it is hot or cold outside?",
-      "explanation": "A thermometer measures warmth or chilliness in degrees Celsius or Fahrenheit.",
-      "correctChoiceId": "choice1",
-      "questionAudio": "quiz/audio/geography_beginner_129-question.mp3",
-      "explanationAudio": "quiz/audio/geography_beginner_129-explanation.mp3",
-      "questionAudioSeconds": 5.7333,
-      "explanationAudioSeconds": 6.4,
-      "choices": [
-        {
-          "choiceId": "choice1",
-          "label": "Thermometer",
-          "image": "quiz/answers/thermometer.webp"
-        },
-        {
-          "choiceId": "choice2",
-          "label": "Hygrometer",
-          "image": "quiz/answers/hygrometer.webp"
-        },
-        {
-          "choiceId": "choice3",
-          "label": "Barometer",
-          "image": "quiz/answers/barometer.webp"
-        },
-        {
-          "choiceId": "choice4",
-          "label": "Weather Vane",
-          "image": "quiz/answers/weather_vane.webp"
-        }
-      ]
-    },
-    {
-      "questionId": "geography_beginner_134",
-      "questionNumber": 10,
-      "question": "Which process turns floating water vapor gas back into liquid droplets to form puffy sky clouds?",
-      "explanation": "Condensation occurs when invisible water vapor cools into visible liquid droplets.",
-      "correctChoiceId": "choice3",
-      "questionAudio": "quiz/audio/geography_beginner_134-question.mp3",
-      "explanationAudio": "quiz/audio/geography_beginner_134-explanation.mp3",
-      "questionAudioSeconds": 7.8667,
-      "explanationAudioSeconds": 6.5333,
-      "choices": [
-        {
-          "choiceId": "choice1",
-          "label": "Runoff",
-          "image": "quiz/answers/runoff.webp"
-        },
-        {
-          "choiceId": "choice2",
-          "label": "Evaporation",
-          "image": "quiz/answers/evaporation.webp"
-        },
-        {
-          "choiceId": "choice3",
-          "label": "Condensation",
-          "image": "quiz/answers/condensation.webp"
-        },
-        {
-          "choiceId": "choice4",
-          "label": "Transpiration",
-          "image": "quiz/answers/transpiration.webp"
+          "label": "Jamaica",
+          "image": "quiz/answers/jamaica.webp"
         }
       ]
     }
-  ]
+  ],
+  "introVideo": "quiz/intro-landscape.mp4",
+  "introVideoSeconds": 8.0,
+  "outroVideo": "quiz/outro-landscape.mp4",
+  "outroVideoSeconds": 8.0
 }

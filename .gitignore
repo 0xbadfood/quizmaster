@@ -27,6 +27,9 @@ data/assets/**
 /flora.json
 /quiz_intro_*.mp4
 /quiz_into_*.mp4
+/quiz_end*.mp4
+/unused_intro_clips/
+/voice_preview_quizmaster_speaker_1.mp3
 
 # Previous standalone Flutter checkout; the maintained app lives in /app.
 /Storyvault_app/
@@ -39,6 +42,7 @@ data/assets/**
 /video_renderer/node_modules/
 /video_renderer/public/quiz/
 /video_renderer/output/
+/video-output/
 
 # Local LLM experiment prompts and responses
 /experiments/question-dedup/
